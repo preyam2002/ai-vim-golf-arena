@@ -1,0 +1,18 @@
+Running test: Sequence 1: Regex Sub
+/Users/preyam/repo/ai-vim-golf-arena/src/lib/vim-engine.ts:2168
+      clampCursor();
+      ^
+
+ReferenceError: clampCursor is not defined
+    at executeKeystrokeInternal (/Users/preyam/repo/ai-vim-golf-arena/src/lib/vim-engine.ts:2168:7)
+    at executeKeystroke (/Users/preyam/repo/ai-vim-golf-arena/src/lib/vim-engine.ts:2822:10)
+    at runTest (/Users/preyam/repo/ai-vim-golf-arena/reproduce_vim_sequences.ts:39:13)
+    at <anonymous> (/Users/preyam/repo/ai-vim-golf-arena/reproduce_vim_sequences.ts:59:1)
+    at Object.<anonymous> (/Users/preyam/repo/ai-vim-golf-arena/reproduce_vim_sequences.ts:213:75)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object.transformer (/Users/preyam/.npm/_npx/fd45a72a545557e9/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+
+Node.js v25.2.1

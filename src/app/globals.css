@@ -1,0 +1,382 @@
+@import "tailwindcss";
+@config "../../tailwind.config.mjs";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.09 0.01 260);
+  --foreground: oklch(0.94 0.02 260);
+  --card: oklch(0.12 0.01 260);
+  --card-foreground: oklch(0.94 0.02 260);
+  --popover: oklch(0.09 0.01 260);
+  --popover-foreground: oklch(0.94 0.02 260);
+  --primary: oklch(0.82 0.12 240); /* glacier ice */
+  --primary-foreground: oklch(0.14 0.04 240);
+  --secondary: oklch(0.17 0.01 250); /* graphite */
+  --secondary-foreground: oklch(0.92 0.02 250);
+  --muted: oklch(0.16 0.01 250);
+  --muted-foreground: oklch(0.70 0.02 250);
+  --accent: oklch(0.70 0.06 260); /* smoked lavender */
+  --accent-foreground: oklch(0.12 0.02 260);
+  --destructive: oklch(0.46 0.14 25);
+  --destructive-foreground: oklch(0.94 0 0);
+  --border: oklch(0.24 0.01 260);
+  --input: oklch(0.24 0.01 260);
+  --ring: var(--primary);
+  --chart-1: oklch(0.82 0.12 240);
+  --chart-2: oklch(0.70 0.06 260);
+  --chart-3: oklch(0.64 0.10 210);
+  --chart-4: oklch(0.60 0.12 120);
+  --chart-5: oklch(0.72 0.15 45);
+  --radius: 0.875rem;
+  --sidebar: oklch(0.12 0.01 260);
+  --sidebar-foreground: oklch(0.94 0.02 260);
+  --sidebar-primary: oklch(0.82 0.12 240);
+  --sidebar-primary-foreground: oklch(0.14 0.04 240);
+  --sidebar-accent: oklch(0.17 0.01 250);
+  --sidebar-accent-foreground: oklch(0.92 0.02 250);
+  --sidebar-border: oklch(0.22 0.01 250);
+  --sidebar-ring: var(--primary);
+  --glow-emerald: 0 0 30px color-mix(in srgb, oklch(0.82 0.12 240) 60%, transparent);
+  --glow-magenta: 0 0 30px color-mix(in srgb, oklch(0.70 0.06 260) 60%, transparent);
+}
+
+.dark {
+  --background: oklch(0.08 0.01 250);
+  --foreground: oklch(0.95 0.02 250);
+  --card: oklch(0.11 0.01 250);
+  --card-foreground: oklch(0.95 0.02 250);
+  --popover: oklch(0.08 0.01 250);
+  --popover-foreground: oklch(0.95 0.02 250);
+  --primary: oklch(0.82 0.12 240);
+  --primary-foreground: oklch(0.14 0.04 240);
+  --secondary: oklch(0.19 0.015 250);
+  --secondary-foreground: oklch(0.92 0.02 250);
+  --muted: oklch(0.18 0.015 250);
+  --muted-foreground: oklch(0.7 0.02 250);
+  --accent: oklch(0.70 0.06 260);
+  --accent-foreground: oklch(0.14 0.02 260);
+  --destructive: oklch(0.46 0.14 25);
+  --destructive-foreground: oklch(0.94 0 0);
+  --border: oklch(0.25 0.015 250);
+  --input: oklch(0.25 0.015 250);
+  --ring: var(--primary);
+  --chart-1: oklch(0.82 0.12 240);
+  --chart-2: oklch(0.70 0.06 260);
+  --chart-3: oklch(0.64 0.10 210);
+  --chart-4: oklch(0.60 0.12 120);
+  --chart-5: oklch(0.72 0.15 45);
+  --sidebar: oklch(0.12 0.01 250);
+  --sidebar-foreground: oklch(0.95 0.02 250);
+  --sidebar-primary: oklch(0.82 0.12 240);
+  --sidebar-primary-foreground: oklch(0.14 0.04 240);
+  --sidebar-accent: oklch(0.19 0.015 250);
+  --sidebar-accent-foreground: oklch(0.92 0.02 250);
+  --sidebar-border: oklch(0.25 0.015 250);
+  --sidebar-ring: var(--primary);
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-[0_40px_80px_-60px_rgba(0,0,0,0.8)];
+  }
+  .glass-card {
+    @apply bg-gradient-to-b from-zinc-900/70 to-zinc-900/40 backdrop-blur-lg border border-white/10 shadow-lg hover:border-primary/40 transition-colors;
+  }
+  .neon-card {
+    @apply relative overflow-hidden border border-border/60 rounded-2xl bg-card/70 backdrop-blur-lg;
+  }
+  .neon-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--primary) 35%, transparent) 0, transparent 35%),
+      radial-gradient(circle at 80% 10%, color-mix(in srgb, var(--accent) 35%, transparent) 0, transparent 30%),
+      linear-gradient(120deg, color-mix(in srgb, var(--primary) 20%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
+    opacity: 0.6;
+    filter: blur(22px);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .neon-card > * {
+    position: relative;
+    z-index: 1;
+  }
+  .grid-overlay {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 120px 120px;
+    mask-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.7), transparent 60%);
+  }
+  .text-glow {
+    text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-sans), "IBM Plex Sans", "Inter";
+  --font-display: var(--font-display), "VT323", "IBM Plex Mono";
+  --font-mono: var(--font-mono), "IBM Plex Mono", "Geist Mono";
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(60% 60% at 15% 20%, rgba(42, 255, 193, 0.08), transparent 50%),
+      radial-gradient(60% 60% at 80% 0%, rgba(255, 69, 185, 0.08), transparent 50%),
+      linear-gradient(135deg, rgba(15, 16, 20, 0.9), rgba(6, 6, 7, 0.95));
+    min-height: 100vh;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.25;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 120px 120px;
+    mask-image: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.6), transparent 55%);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+    opacity: 0.18;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 25%, transparent);
+    color: var(--foreground);
+  }
+}
+
+.vim-hints-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.vim-hint {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--foreground);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.vim-hint-buffer {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--foreground);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.vim-search-shell {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  z-index: 70;
+  min-width: 320px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+.vim-search-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vim-search-slash {
+  color: var(--muted-foreground);
+  font-weight: 700;
+}
+
+.vim-search-input {
+  flex: 1;
+  background: rgba(24, 24, 27, 0.8);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.vim-search-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.vim-search-action {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+}
+
+.vim-search-meta {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+mark.vim-search-highlight {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--foreground);
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+
+.vim-sneak-highlight {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--foreground);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.vim-term-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  background: #0a0a0a;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 8px 12px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.vim-terminal {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  background: #0a0a0a;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -20px 40px rgba(0, 0, 0, 0.55);
+}
+
+.vim-term-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: rgba(24, 24, 27, 0.9);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.vim-term-title {
+  font-weight: 700;
+}
+
+.vim-term-mode {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.vim-term-body {
+  max-height: 240px;
+  padding: 10px 14px 52px;
+  overflow: auto;
+  background: #050505;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.vim-term-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vim-term-line {
+  display: block;
+}
+
+.vim-term-cursor {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.vim-term-input {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  opacity: 0;
+  pointer-events: none;
+}

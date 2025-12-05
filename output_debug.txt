@@ -1,0 +1,488 @@
+Running test: Sequence 1: Regex Sub
+[VimEngine] Command: '<,'>s/\v(.*)=(.*)/"\1": "\2",/g
+[VimEngine] Substitute match: [
+  `'<,'>s/\\v(.*)=(.*)/"\\1": "\\2",/g`,
+  "'<,'>",
+  '\\v(.*)=(.*)',
+  '/"\\1": "\\2",/g',
+  '"\\1": "\\2",',
+  '/g',
+  'g',
+  index: 0,
+  input: `'<,'>s/\\v(.*)=(.*)/"\\1": "\\2",/g`,
+  groups: undefined
+]
+[VimEngine] Sub line 0: "key=value" -> ""key": "value"," (regex: /(.*)=(.*)/g, repl: ""$1": "$2",")
+PASS
+---
+Running test: Sequence 2: Multiline Sub
+[VimEngine] Command: %s/,\n}/\n}/g
+[VimEngine] Substitute match: [
+  '%s/,\\n}/\\n}/g',
+  '%',
+  ',\\n}',
+  '/\\n}/g',
+  '\\n}',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/,\\n}/\\n}/g',
+  groups: undefined
+]
+PASS
+---
+Running test: Sequence 4: Incomplete Sub
+[VimEngine] Command: %s/^ "#.*
+[VimEngine] Substitute match: [
+  '%s/^ "#.*',
+  '%',
+  '^ "#.*',
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  index: 0,
+  input: '%s/^ "#.*',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "# comment" -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 1: "keep" -> "keep" (regex: /^ "#.*/, repl: "")
+FAIL
+Expected:
+ "# comment
+keep
+Actual:
+
+keep
+---
+Running test: Sequence 4: Full Flow
+[VimEngine] Command: %s/=/": "/g
+[VimEngine] Substitute match: [
+  '%s/=/": "/g',
+  '%',
+  '=',
+  '/": "/g',
+  '": "',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/=/": "/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: "{" -> "{" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 1: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Command: %s/^/ "/g
+[VimEngine] Substitute match: [
+  '%s/^/ "/g',
+  '%',
+  '^',
+  '/ "/g',
+  ' "',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/^/ "/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: "{" -> " "{" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 1: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Command: %s/$/,/g
+[VimEngine] Substitute match: [
+  '%s/$/,/g',
+  '%',
+  '$',
+  '/,/g',
+  ',',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/$/,/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{" -> " "{," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 1: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Command: %s/^ "#.*
+[VimEngine] Substitute match: [
+  '%s/^ "#.*',
+  '%',
+  '^ "#.*',
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  index: 0,
+  input: '%s/^ "#.*',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{," -> " "{," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 1: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Command: %s/,$//
+[VimEngine] Substitute match: [
+  '%s/,$//',
+  '%',
+  ',$',
+  '//',
+  '',
+  '/',
+  '',
+  index: 0,
+  input: '%s/,$//',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{," -> " "{" (regex: /,$/, repl: "")
+FAIL
+Expected:
+{
+ "a": "1",
+ "b": "2"
+}
+Actual:
+}
+ "{
+---
+Running test: Sequence 5: VimGolf Challenge
+[VimEngine] Command: %s/=/": "/g
+[VimEngine] Substitute match: [
+  '%s/=/": "/g',
+  '%',
+  '=',
+  '/": "/g',
+  '": "',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/=/": "/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: "{" -> "{" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 1: "# API Settings" -> "# API Settings" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 2: "JOBS_API_URL=http://localhost:5000" -> "JOBS_API_URL": "http://localhost:5000" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 3: "JOBS_BASE_URL=http://localhost:8000" -> "JOBS_BASE_URL": "http://localhost:8000" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 4: "SCRAPERS_BASE_URL=http://localhost:9900" -> "SCRAPERS_BASE_URL": "http://localhost:9900" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 5: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 6: "# Database Settings" -> "# Database Settings" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 7: "JOBS_DATABASE_URI=mongodb://mongouser:mongopassword@127.0.0.1:27017/app" -> "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 8: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 9: "# Redis Settings" -> "# Redis Settings" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 10: "JOBS_REDIS_DSN=redis://127.0.0.1:6000" -> "JOBS_REDIS_DSN": "redis://127.0.0.1:6000" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 11: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 12: "# Data API" -> "# Data API" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 13: "DATA_BASE_URL=http://127.0.0.1:8900" -> "DATA_BASE_URL": "http://127.0.0.1:8900" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 14: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 15: "# Minio config" -> "# Minio config" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 16: "JOBS_MINIO_SECURE=false" -> "JOBS_MINIO_SECURE": "false" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 17: "JOBS_MINIO_ACCESS_KEY=miniouser" -> "JOBS_MINIO_ACCESS_KEY": "miniouser" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 18: "JOBS_MINIO_SECRET_KEY=miniosecret" -> "JOBS_MINIO_SECRET_KEY": "miniosecret" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 19: "JOBS_MINIO_HOST=127.0.0.1:9500" -> "JOBS_MINIO_HOST": "127.0.0.1:9500" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 20: "JOBS_MINIO_DEFAULT_BUCKET=jobs" -> "JOBS_MINIO_DEFAULT_BUCKET": "jobs" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 21: "JOBS_MINIO_REGION=us-west-1" -> "JOBS_MINIO_REGION": "us-west-1" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 22: "JOBS_MINIO_CREATE_BUCKETS=false" -> "JOBS_MINIO_CREATE_BUCKETS": "false" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 23: "JOBS_MINIO_RESULTS_FORMAT=results/{job.id}.json" -> "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 24: "JOBS_MINIO_ARGUMENTS_FORMAT=arguments/{job.id}.json" -> "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 25: "JOBS_MINIO_SERVICES_PATH=services/{job.service.bucket_name}" -> "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 26: "JOBS_MINIO_LOGS_BUCKET=" -> "JOBS_MINIO_LOGS_BUCKET": "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 27: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 28: "# RabbitMQ Settings" -> "# RabbitMQ Settings" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 29: "JOBS_RABBITMQ_URI=amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" -> "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 30: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 31: "# Package registry" -> "# Package registry" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 32: "REGISTRY_TOKEN=g_dka000111222333444" -> "REGISTRY_TOKEN": "g_dka000111222333444" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 33: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 34: "LOG_FORMAT=text" -> "LOG_FORMAT": "text" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 35: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 36: "# Slack notifications" -> "# Slack notifications" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 37: "SLACK_TOKEN=" -> "SLACK_TOKEN": "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 38: "LOGGING_CHANNEL=" -> "LOGGING_CHANNEL": "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 39: "" -> "" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 40: "# Metadata API" -> "# Metadata API" (regex: /=/g, repl: "": "")
+[VimEngine] Sub line 41: "TEST_METADATA_BASE_URL=http://127.0.0.1:8801" -> "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801" (regex: /=/g, repl: "": "")
+[VimEngine] Command: %s/^/ "/g
+[VimEngine] Substitute match: [
+  '%s/^/ "/g',
+  '%',
+  '^',
+  '/ "/g',
+  ' "',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/^/ "/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: "{" -> " "{" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 1: "# API Settings" -> " "# API Settings" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 2: "JOBS_API_URL": "http://localhost:5000" -> " "JOBS_API_URL": "http://localhost:5000" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 3: "JOBS_BASE_URL": "http://localhost:8000" -> " "JOBS_BASE_URL": "http://localhost:8000" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 4: "SCRAPERS_BASE_URL": "http://localhost:9900" -> " "SCRAPERS_BASE_URL": "http://localhost:9900" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 5: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 6: "# Database Settings" -> " "# Database Settings" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 7: "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app" -> " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 8: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 9: "# Redis Settings" -> " "# Redis Settings" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 10: "JOBS_REDIS_DSN": "redis://127.0.0.1:6000" -> " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 11: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 12: "# Data API" -> " "# Data API" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 13: "DATA_BASE_URL": "http://127.0.0.1:8900" -> " "DATA_BASE_URL": "http://127.0.0.1:8900" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 14: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 15: "# Minio config" -> " "# Minio config" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 16: "JOBS_MINIO_SECURE": "false" -> " "JOBS_MINIO_SECURE": "false" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 17: "JOBS_MINIO_ACCESS_KEY": "miniouser" -> " "JOBS_MINIO_ACCESS_KEY": "miniouser" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 18: "JOBS_MINIO_SECRET_KEY": "miniosecret" -> " "JOBS_MINIO_SECRET_KEY": "miniosecret" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 19: "JOBS_MINIO_HOST": "127.0.0.1:9500" -> " "JOBS_MINIO_HOST": "127.0.0.1:9500" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 20: "JOBS_MINIO_DEFAULT_BUCKET": "jobs" -> " "JOBS_MINIO_DEFAULT_BUCKET": "jobs" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 21: "JOBS_MINIO_REGION": "us-west-1" -> " "JOBS_MINIO_REGION": "us-west-1" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 22: "JOBS_MINIO_CREATE_BUCKETS": "false" -> " "JOBS_MINIO_CREATE_BUCKETS": "false" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 23: "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json" -> " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 24: "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json" -> " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 25: "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}" -> " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 26: "JOBS_MINIO_LOGS_BUCKET": "" -> " "JOBS_MINIO_LOGS_BUCKET": "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 27: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 28: "# RabbitMQ Settings" -> " "# RabbitMQ Settings" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 29: "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" -> " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 30: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 31: "# Package registry" -> " "# Package registry" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 32: "REGISTRY_TOKEN": "g_dka000111222333444" -> " "REGISTRY_TOKEN": "g_dka000111222333444" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 33: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 34: "LOG_FORMAT": "text" -> " "LOG_FORMAT": "text" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 35: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 36: "# Slack notifications" -> " "# Slack notifications" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 37: "SLACK_TOKEN": "" -> " "SLACK_TOKEN": "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 38: "LOGGING_CHANNEL": "" -> " "LOGGING_CHANNEL": "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 39: "" -> " "" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 40: "# Metadata API" -> " "# Metadata API" (regex: /^/g, repl: " "")
+[VimEngine] Sub line 41: "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801" -> " "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801" (regex: /^/g, repl: " "")
+[VimEngine] Command: %s/$/,/g
+[VimEngine] Substitute match: [
+  '%s/$/,/g',
+  '%',
+  '$',
+  '/,/g',
+  ',',
+  '/g',
+  'g',
+  index: 0,
+  input: '%s/$/,/g',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{" -> " "{," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 1: " "# API Settings" -> " "# API Settings," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 2: " "JOBS_API_URL": "http://localhost:5000" -> " "JOBS_API_URL": "http://localhost:5000," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 3: " "JOBS_BASE_URL": "http://localhost:8000" -> " "JOBS_BASE_URL": "http://localhost:8000," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 4: " "SCRAPERS_BASE_URL": "http://localhost:9900" -> " "SCRAPERS_BASE_URL": "http://localhost:9900," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 5: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 6: " "# Database Settings" -> " "# Database Settings," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 7: " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app" -> " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 8: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 9: " "# Redis Settings" -> " "# Redis Settings," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 10: " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000" -> " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 11: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 12: " "# Data API" -> " "# Data API," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 13: " "DATA_BASE_URL": "http://127.0.0.1:8900" -> " "DATA_BASE_URL": "http://127.0.0.1:8900," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 14: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 15: " "# Minio config" -> " "# Minio config," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 16: " "JOBS_MINIO_SECURE": "false" -> " "JOBS_MINIO_SECURE": "false," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 17: " "JOBS_MINIO_ACCESS_KEY": "miniouser" -> " "JOBS_MINIO_ACCESS_KEY": "miniouser," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 18: " "JOBS_MINIO_SECRET_KEY": "miniosecret" -> " "JOBS_MINIO_SECRET_KEY": "miniosecret," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 19: " "JOBS_MINIO_HOST": "127.0.0.1:9500" -> " "JOBS_MINIO_HOST": "127.0.0.1:9500," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 20: " "JOBS_MINIO_DEFAULT_BUCKET": "jobs" -> " "JOBS_MINIO_DEFAULT_BUCKET": "jobs," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 21: " "JOBS_MINIO_REGION": "us-west-1" -> " "JOBS_MINIO_REGION": "us-west-1," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 22: " "JOBS_MINIO_CREATE_BUCKETS": "false" -> " "JOBS_MINIO_CREATE_BUCKETS": "false," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 23: " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json" -> " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 24: " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json" -> " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 25: " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}" -> " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 26: " "JOBS_MINIO_LOGS_BUCKET": "" -> " "JOBS_MINIO_LOGS_BUCKET": "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 27: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 28: " "# RabbitMQ Settings" -> " "# RabbitMQ Settings," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 29: " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" -> " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 30: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 31: " "# Package registry" -> " "# Package registry," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 32: " "REGISTRY_TOKEN": "g_dka000111222333444" -> " "REGISTRY_TOKEN": "g_dka000111222333444," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 33: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 34: " "LOG_FORMAT": "text" -> " "LOG_FORMAT": "text," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 35: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 36: " "# Slack notifications" -> " "# Slack notifications," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 37: " "SLACK_TOKEN": "" -> " "SLACK_TOKEN": "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 38: " "LOGGING_CHANNEL": "" -> " "LOGGING_CHANNEL": "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 39: " "" -> " "," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 40: " "# Metadata API" -> " "# Metadata API," (regex: /$/g, repl: ",")
+[VimEngine] Sub line 41: " "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801" -> " "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801," (regex: /$/g, repl: ",")
+[VimEngine] Command: %s/^ "#.*
+[VimEngine] Substitute match: [
+  '%s/^ "#.*',
+  '%',
+  '^ "#.*',
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  index: 0,
+  input: '%s/^ "#.*',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{," -> " "{," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 1: " "# API Settings," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 2: " "JOBS_API_URL": "http://localhost:5000," -> " "JOBS_API_URL": "http://localhost:5000," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 3: " "JOBS_BASE_URL": "http://localhost:8000," -> " "JOBS_BASE_URL": "http://localhost:8000," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 4: " "SCRAPERS_BASE_URL": "http://localhost:9900," -> " "SCRAPERS_BASE_URL": "http://localhost:9900," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 5: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 6: " "# Database Settings," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 7: " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app," -> " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 8: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 9: " "# Redis Settings," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 10: " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000," -> " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 11: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 12: " "# Data API," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 13: " "DATA_BASE_URL": "http://127.0.0.1:8900," -> " "DATA_BASE_URL": "http://127.0.0.1:8900," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 14: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 15: " "# Minio config," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 16: " "JOBS_MINIO_SECURE": "false," -> " "JOBS_MINIO_SECURE": "false," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 17: " "JOBS_MINIO_ACCESS_KEY": "miniouser," -> " "JOBS_MINIO_ACCESS_KEY": "miniouser," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 18: " "JOBS_MINIO_SECRET_KEY": "miniosecret," -> " "JOBS_MINIO_SECRET_KEY": "miniosecret," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 19: " "JOBS_MINIO_HOST": "127.0.0.1:9500," -> " "JOBS_MINIO_HOST": "127.0.0.1:9500," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 20: " "JOBS_MINIO_DEFAULT_BUCKET": "jobs," -> " "JOBS_MINIO_DEFAULT_BUCKET": "jobs," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 21: " "JOBS_MINIO_REGION": "us-west-1," -> " "JOBS_MINIO_REGION": "us-west-1," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 22: " "JOBS_MINIO_CREATE_BUCKETS": "false," -> " "JOBS_MINIO_CREATE_BUCKETS": "false," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 23: " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json," -> " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 24: " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json," -> " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 25: " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}," -> " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 26: " "JOBS_MINIO_LOGS_BUCKET": "," -> " "JOBS_MINIO_LOGS_BUCKET": "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 27: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 28: " "# RabbitMQ Settings," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 29: " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672," -> " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 30: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 31: " "# Package registry," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 32: " "REGISTRY_TOKEN": "g_dka000111222333444," -> " "REGISTRY_TOKEN": "g_dka000111222333444," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 33: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 34: " "LOG_FORMAT": "text," -> " "LOG_FORMAT": "text," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 35: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 36: " "# Slack notifications," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 37: " "SLACK_TOKEN": "," -> " "SLACK_TOKEN": "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 38: " "LOGGING_CHANNEL": "," -> " "LOGGING_CHANNEL": "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 39: " "," -> " "," (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 40: " "# Metadata API," -> "" (regex: /^ "#.*/, repl: "")
+[VimEngine] Sub line 41: " "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801," -> " "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801," (regex: /^ "#.*/, repl: "")
+[VimEngine] Command: %s/,$//
+[VimEngine] Substitute match: [
+  '%s/,$//',
+  '%',
+  ',$',
+  '//',
+  '',
+  '/',
+  '',
+  index: 0,
+  input: '%s/,$//',
+  groups: undefined
+]
+[VimEngine] Sub line 0: " "{," -> " "{" (regex: /,$/, repl: "")
+[VimEngine] Sub line 1: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 2: " "JOBS_API_URL": "http://localhost:5000," -> " "JOBS_API_URL": "http://localhost:5000" (regex: /,$/, repl: "")
+[VimEngine] Sub line 3: " "JOBS_BASE_URL": "http://localhost:8000," -> " "JOBS_BASE_URL": "http://localhost:8000" (regex: /,$/, repl: "")
+[VimEngine] Sub line 4: " "SCRAPERS_BASE_URL": "http://localhost:9900," -> " "SCRAPERS_BASE_URL": "http://localhost:9900" (regex: /,$/, repl: "")
+[VimEngine] Sub line 5: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 6: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 7: " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app," -> " "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app" (regex: /,$/, repl: "")
+[VimEngine] Sub line 8: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 9: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 10: " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000," -> " "JOBS_REDIS_DSN": "redis://127.0.0.1:6000" (regex: /,$/, repl: "")
+[VimEngine] Sub line 11: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 12: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 13: " "DATA_BASE_URL": "http://127.0.0.1:8900," -> " "DATA_BASE_URL": "http://127.0.0.1:8900" (regex: /,$/, repl: "")
+[VimEngine] Sub line 14: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 15: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 16: " "JOBS_MINIO_SECURE": "false," -> " "JOBS_MINIO_SECURE": "false" (regex: /,$/, repl: "")
+[VimEngine] Sub line 17: " "JOBS_MINIO_ACCESS_KEY": "miniouser," -> " "JOBS_MINIO_ACCESS_KEY": "miniouser" (regex: /,$/, repl: "")
+[VimEngine] Sub line 18: " "JOBS_MINIO_SECRET_KEY": "miniosecret," -> " "JOBS_MINIO_SECRET_KEY": "miniosecret" (regex: /,$/, repl: "")
+[VimEngine] Sub line 19: " "JOBS_MINIO_HOST": "127.0.0.1:9500," -> " "JOBS_MINIO_HOST": "127.0.0.1:9500" (regex: /,$/, repl: "")
+[VimEngine] Sub line 20: " "JOBS_MINIO_DEFAULT_BUCKET": "jobs," -> " "JOBS_MINIO_DEFAULT_BUCKET": "jobs" (regex: /,$/, repl: "")
+[VimEngine] Sub line 21: " "JOBS_MINIO_REGION": "us-west-1," -> " "JOBS_MINIO_REGION": "us-west-1" (regex: /,$/, repl: "")
+[VimEngine] Sub line 22: " "JOBS_MINIO_CREATE_BUCKETS": "false," -> " "JOBS_MINIO_CREATE_BUCKETS": "false" (regex: /,$/, repl: "")
+[VimEngine] Sub line 23: " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json," -> " "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json" (regex: /,$/, repl: "")
+[VimEngine] Sub line 24: " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json," -> " "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json" (regex: /,$/, repl: "")
+[VimEngine] Sub line 25: " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}," -> " "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}" (regex: /,$/, repl: "")
+[VimEngine] Sub line 26: " "JOBS_MINIO_LOGS_BUCKET": "," -> " "JOBS_MINIO_LOGS_BUCKET": "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 27: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 28: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 29: " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672," -> " "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672" (regex: /,$/, repl: "")
+[VimEngine] Sub line 30: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 31: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 32: " "REGISTRY_TOKEN": "g_dka000111222333444," -> " "REGISTRY_TOKEN": "g_dka000111222333444" (regex: /,$/, repl: "")
+[VimEngine] Sub line 33: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 34: " "LOG_FORMAT": "text," -> " "LOG_FORMAT": "text" (regex: /,$/, repl: "")
+[VimEngine] Sub line 35: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 36: "" -> "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 37: " "SLACK_TOKEN": "," -> " "SLACK_TOKEN": "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 38: " "LOGGING_CHANNEL": "," -> " "LOGGING_CHANNEL": "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 39: " "," -> " "" (regex: /,$/, repl: "")
+[VimEngine] Sub line 40: "" -> "" (regex: /,$/, repl: "")
+FAIL
+Expected:
+{
+"JOBS_API_URL": "http://localhost:5000",
+"JOBS_BASE_URL": "http://localhost:8000",
+"SCRAPERS_BASE_URL": "http://localhost:9900",
+"JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app",
+"JOBS_REDIS_DSN": "redis://127.0.0.1:6000",
+"DATA_BASE_URL": "http://127.0.0.1:8900",
+"JOBS_MINIO_SECURE": "false",
+"JOBS_MINIO_ACCESS_KEY": "miniouser",
+"JOBS_MINIO_SECRET_KEY": "miniosecret",
+"JOBS_MINIO_HOST": "127.0.0.1:9500",
+"JOBS_MINIO_DEFAULT_BUCKET": "jobs",
+"JOBS_MINIO_REGION": "us-west-1",
+"JOBS_MINIO_CREATE_BUCKETS": "false",
+"JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json",
+"JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json",
+"JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}",
+"JOBS_MINIO_LOGS_BUCKET": "",
+"JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672",
+"REGISTRY_TOKEN": "g_dka000111222333444",
+"LOG_FORMAT": "text",
+"SLACK_TOKEN": "",
+"LOGGING_CHANNEL": "",
+"TEST_METADATA_BASE_URL": "http://127.0.0.1:8801"
+}
+Actual:
+ "{
+
+ "JOBS_API_URL": "http://localhost:5000
+ "JOBS_BASE_URL": "http://localhost:8000
+ "SCRAPERS_BASE_URL": "http://localhost:9900
+ "
+
+ "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app
+ "
+
+ "JOBS_REDIS_DSN": "redis://127.0.0.1:6000
+ "
+
+ "DATA_BASE_URL": "http://127.0.0.1:8900
+ "
+
+ "JOBS_MINIO_SECURE": "false
+ "JOBS_MINIO_ACCESS_KEY": "miniouser
+ "JOBS_MINIO_SECRET_KEY": "miniosecret
+ "JOBS_MINIO_HOST": "127.0.0.1:9500
+ "JOBS_MINIO_DEFAULT_BUCKET": "jobs
+ "JOBS_MINIO_REGION": "us-west-1
+ "JOBS_MINIO_CREATE_BUCKETS": "false
+ "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json
+ "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json
+ "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}
+ "JOBS_MINIO_LOGS_BUCKET": "
+ "
+
+ "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672
+ "
+
+ "REGISTRY_TOKEN": "g_dka000111222333444
+ "
+ "LOG_FORMAT": "text
+ "
+
+ "SLACK_TOKEN": "
+ "LOGGING_CHANNEL": "
+ "
+}
+
+---

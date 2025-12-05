@@ -1,0 +1,280 @@
+Testing LLM keystrokes...
+
+Keystrokes: :%g/^<<<<<<<\|^=======\|^>>>>>>>/d<CR>
+/return total \* 0.9<CR>Ototal = total * 0.9<Esc>jdd
+:%s/USD/EUR/g<CR>
+/'status': 'success',<CR>c4w'processed',<Esc>j
+o'shipping': shipping,<Esc>k
+f}i,<Esc>j
+/return {<CR>o'items_count': len(items),<Esc>k
+
+================================================================================
+
+Tokens (86): [
+  ':%g/^<<<<<<<\\|^=======\\|^>>>>>>>/d<CR>',
+  '/return total \\* 0.9<CR>',
+  'O',
+  't',
+  'o',
+  't',
+  'a',
+  'l',
+  ' ',
+  '='
+] ...
+
+[1/86] Executing: :%g/^<<<<<<<\|^=======\|^>>>>>>>/d<CR>
+[VimEx] Command: %g/^<<<<<<<\|^=======\|^>>>>>>>/d
+[VimEx] Global: regex=/^<<<<<<<|^=======|^>>>>>>>/, range=0-36
+[VimEx] Deleting line 0: <<<<<<< HEAD
+[VimEx] Deleting line 5: =======
+[VimEx] Deleting line 10: >>>>>>> feature/add-tax
+[VimEx] Deleting line 13: <<<<<<< HEAD
+[VimEx] Deleting line 16: =======
+[VimEx] Deleting line 19: >>>>>>> feature/currency-update
+[VimEx] Deleting line 23: <<<<<<< HEAD
+[VimEx] Deleting line 29: =======
+[VimEx] Deleting line 36: >>>>>>> feature/shipping
+  Lines: 28, Cursor: 0:0, Mode: normal
+
+[2/86] Executing: /return total \* 0.9<CR>
+[VimSearch] Searching for 'return total \* 0.9' in 28 lines. Start: 0:0, Dir: forward
+[VimSearch] Found 1 total matches.
+[VimSearch] Matches after cursor: 1
+  Lines: 28, Cursor: 3:4, Mode: normal
+
+[3/86] Executing: O
+[Normal] Key: O, Op: null, Cursor: 3:4
+  Lines: 29, Cursor: 3:0, Mode: insert
+
+[4/86] Executing: t
+  Lines: 29, Cursor: 3:1, Mode: insert
+
+[5/86] Executing: o
+  Lines: 29, Cursor: 3:2, Mode: insert
+
+[6/86] Executing: t
+
+[7/86] Executing: a
+
+[8/86] Executing: l
+
+[9/86] Executing:  
+
+[10/86] Executing: =
+
+[11/86] Executing:  
+
+[12/86] Executing: t
+
+[13/86] Executing: o
+
+[14/86] Executing: t
+
+[15/86] Executing: a
+
+[16/86] Executing: l
+
+[17/86] Executing:  
+
+[18/86] Executing: *
+
+[19/86] Executing:  
+
+[20/86] Executing: 0
+
+[21/86] Executing: .
+
+[22/86] Executing: 9
+
+[23/86] Executing: <Esc>
+
+[24/86] Executing: j
+[Normal] Key: j, Op: null, Cursor: 3:18
+
+[25/86] Executing: d
+[Normal] Key: d, Op: null, Cursor: 4:18
+
+[26/86] Executing: d
+[Normal] Key: d, Op: d, Cursor: 4:18
+
+[27/86] Executing: :%s/USD/EUR/g<CR>
+[VimEx] Command: %s/USD/EUR/g
+
+[28/86] Executing: /'status': 'success',<CR>
+[VimSearch] Searching for ''status': 'success',' in 28 lines. Start: 27:0, Dir: forward
+[VimSearch] Found 1 total matches.
+[VimSearch] Matches after cursor: 0
+[VimSearch] No matches after cursor, but 1 total. Wrapping?
+
+[29/86] Executing: c
+[Normal] Key: c, Op: null, Cursor: 27:0
+
+[30/86] Executing: 4
+[Normal] Key: 4, Op: c, Cursor: 27:0
+
+[31/86] Executing: w
+
+[32/86] Executing: '
+
+[33/86] Executing: p
+
+[34/86] Executing: r
+
+[35/86] Executing: o
+
+[36/86] Executing: c
+
+[37/86] Executing: e
+
+[38/86] Executing: s
+
+[39/86] Executing: s
+
+[40/86] Executing: e
+
+[41/86] Executing: d
+
+[42/86] Executing: '
+
+[43/86] Executing: ,
+
+[44/86] Executing: <Esc>
+
+[45/86] Executing: j
+[Normal] Key: j, Op: null, Cursor: 27:12
+
+[46/86] Executing: o
+[Normal] Key: o, Op: null, Cursor: 27:12
+
+[47/86] Executing: '
+
+[48/86] Executing: s
+
+[49/86] Executing: h
+
+[50/86] Executing: i
+
+[51/86] Executing: p
+
+[52/86] Executing: p
+
+[53/86] Executing: i
+
+[54/86] Executing: n
+
+[55/86] Executing: g
+
+[56/86] Executing: '
+
+[57/86] Executing: : shipping,<Esc>k
+f}i,<Esc>j
+/return {<CR>
+[VimEx] Command:  shipping,<Esc>k
+f}i,<Esc>j
+/return {
+
+[58/86] Executing: o
+[Normal] Key: o, Op: null, Cursor: 28:10
+
+[59/86] Executing: '
+
+[60/86] Executing: i
+
+[61/86] Executing: t
+
+[62/86] Executing: e
+
+[63/86] Executing: m
+
+[64/86] Executing: s
+
+[65/86] Executing: _
+
+[66/86] Executing: c
+
+[67/86] Executing: o
+
+[68/86] Executing: u
+
+[69/86] Executing: n
+
+[70/86] Executing: t
+
+[71/86] Executing: '
+
+[72/86] Executing: :
+
+[73/86] Executing:  
+
+[74/86] Executing: l
+
+[75/86] Executing: e
+
+[76/86] Executing: n
+
+[77/86] Executing: (
+
+[78/86] Executing: i
+
+[79/86] Executing: t
+
+[80/86] Executing: e
+
+[81/86] Executing: m
+
+[82/86] Executing: s
+
+[83/86] Executing: )
+
+[84/86] Executing: ,
+
+[85/86] Executing: <Esc>
+
+[86/86] Executing: k
+[Normal] Key: k, Op: null, Cursor: 29:25
+  Lines: 30, Cursor: 28:9, Mode: normal
+
+================================================================================
+RESULT: ❌ FAILED
+================================================================================
+
+Final text length: 878
+Target text length: 571
+
+First 500 chars of final:
+def calculate_total(items):
+    """Calculate total price of items with 10% discount"""
+    total = sum(item['price'] for item in items)
+total = total * 0.9
+def calculate_total(items):
+    """Calculate total price of items with tax"""
+    total = sum(item['price'] for item in items)
+    return total * 1.15  # Apply 15% tax
+
+def format_currency(amount):
+    """Format amount as EUR"""
+    return f"${amount:.2f}"
+    """Format amount as EUR"""
+    return f"€{amount:.2f}"
+
+def process_order(items):
+ 
+
+First 500 chars of target:
+def calculate_total(items):
+    """Calculate total price of items with tax"""
+    total = sum(item['price'] for item in items)
+    total = total * 0.9  # Apply 10% discount
+    return total * 1.15  # Apply 15% tax
+
+def format_currency(amount):
+    """Format amount as EUR"""
+    return f"€{amount:.2f}"
+
+def process_order(items):
+    total = calculate_total(items)
+    shipping = 5.99 if total < 50 else 0
+    return {
+        'status': 'processed',
+        'total': format_currency(total + shipping)
