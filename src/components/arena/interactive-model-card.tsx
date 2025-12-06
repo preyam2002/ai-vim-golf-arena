@@ -148,6 +148,7 @@ export function InteractiveModelCard({
       finalText,
       steps,
       diffFromBest: keystrokeCount - bestHumanScore,
+      status: isSuccess ? "complete" : "failed",
     };
     onComplete(result);
   };

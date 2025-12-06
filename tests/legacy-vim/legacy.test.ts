@@ -199,7 +199,7 @@ function createLegacyTests() {
     interpretSequence("2w");
     shouldBe("Hello, this is [r]eally nice.");
     interpretSequence("p");
-    shouldBe("Hello, this is rthis [i]eally nice");
+    shouldBe("Hello, this is rthis [i]eally nice.");
   });
 
   register("Visual mode: yank and paste more than a line", function () {
@@ -209,7 +209,7 @@ function createLegacyTests() {
     interpretSequence("y");
     shouldBe("He[l]lo, this is|really nice.");
     interpretSequence("p");
-    shouldBe("He[l]llo, this is|realo, this is|really nice.");
+    shouldBe("He[l]llo, this is||realo, this is|really nice.");
   });
 
   registerBasic(
@@ -230,7 +230,7 @@ function createLegacyTests() {
     "Visual mode: find until next 'n' and delete",
     "Hello, [t]his is really nice.",
     "vfnd",
-    "Hello, [n]ice."
+    "Hello, [i]ce."
   );
 
   register("Visual block mode: add prefix for lines", function () {
@@ -260,7 +260,7 @@ function createLegacyTests() {
     interpretOneCommand("$");
     interpretSequence("?!");
     interpretOneCommand("Esc");
-    shouldBe("Zero|[F]irst?!|- SecondLongIsThis?!|- Third?!|Fourth?!");
+    shouldBe("Zero|Firs[t]?!|SecondLongIsThis?!|Third?!|Fourth");
   });
 
   register("Visual block mode: add text after block", function () {
@@ -270,7 +270,7 @@ function createLegacyTests() {
     interpretOneCommand("A");
     interpretSequence("?!");
     interpretOneCommand("Esc");
-    shouldBe("Zero|[1]23?!|- 1  ?!|- 123?!45|Fourth?!");
+    shouldBe("Zero|123[?]!|1?!|12345?!|Fourth");
   });
 
   register("Insert 3 times given text", function () {

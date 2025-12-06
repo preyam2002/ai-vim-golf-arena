@@ -2,15 +2,21 @@ import { type NextRequest, NextResponse } from "next/server"
 import { callAIGateway, availableModels } from "@/lib/ai-gateway"
 import { VimSimulator } from "@/lib/vim-simulator"
 import type { RunResult } from "@/lib/types"
-import {
-  getOfflineSolution,
-  hasOfflineSolution,
-} from "@/lib/offline-library"
+import { getOfflineSolution } from "@/lib/offline-library"
+import { isDefaultChallengeId } from "@/lib/challenge-source"
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { startText, targetText, modelIds, bestHumanScore, challengeId } = body
+    const {
+      startText,
+      targetText,
+      modelIds,
+      bestHumanScore,
+      challengeId,
+      apiKey,
+    } = body
+    const systemApiKey = process.env.AI_GATEWAY_API_KEY
 
     if (!startText || !targetText || !modelIds || modelIds.length === 0) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -18,6 +24,7 @@ export async function POST(request: NextRequest) {
 
     const results: RunResult[] = []
     const store = challengeId ? (await import("@/lib/store")).store : null
+    const isDefault = challengeId ? isDefaultChallengeId(challengeId) : false
     const persistResult = async (result: RunResult) => {
       if (!store || !challengeId) return
       await store.saveResult(challengeId, result)
@@ -27,10 +34,69 @@ export async function POST(request: NextRequest) {
       const model = availableModels.find((m) => m.id === modelId)
       if (!model) continue
 
-      const cached =
+      const stored =
+        challengeId && store ? await store.getResult(challengeId as string, modelId) : undefined
+      const cachedOffline =
         challengeId && getOfflineSolution(challengeId as string, modelId)
+      const cached = stored || cachedOffline
+
+      if (isDefault) {
+        if (cached) {
+          console.log(
+            `[run] default cache hit challenge=${challengeId} model=${modelId} source=${stored ? "db" : "offline"}`
+          )
+          const keystrokeCount =
+            cached.keystrokeCount || countKeystrokes(cached.keystrokes || "")
+          const diffFromBest =
+            typeof bestHumanScore === "number"
+              ? keystrokeCount - bestHumanScore
+              : cached.diffFromBest ?? 0
+
+          const result: RunResult = {
+            ...cached,
+            modelId: cached.modelId || modelId,
+            modelName: cached.modelName || model.name,
+            keystrokeCount,
+            diffFromBest,
+          }
+          results.push(result)
+          continue
+        }
+
+        const effectiveApiKey = apiKey || systemApiKey
+        if (!effectiveApiKey) {
+          console.warn(
+            `[run] default cache miss challenge=${challengeId} model=${modelId} (apiKey required for first run)`
+          )
+          return NextResponse.json(
+            {
+              error:
+                "apiKey is required to generate a new solution for default challenges (pass apiKey or set AI_GATEWAY_API_KEY)",
+            },
+            { status: 401 }
+          )
+        }
+        console.log(
+          `[run] default cache miss, invoking AI gateway challenge=${challengeId} model=${modelId}`
+        )
+      }
+
+      // Custom challenges must provide an API key
+      const effectiveApiKey = apiKey || systemApiKey
+      if (!effectiveApiKey) {
+        return NextResponse.json(
+          {
+            error:
+              "apiKey is required for custom challenges (pass apiKey or set AI_GATEWAY_API_KEY)",
+          },
+          { status: 401 }
+        )
+      }
 
       if (cached) {
+        console.log(
+          `[run] custom cache hit challenge=${challengeId} model=${modelId} source=${stored ? "db" : "offline"}`
+        )
         const keystrokeCount =
           cached.keystrokeCount || countKeystrokes(cached.keystrokes || "")
         const diffFromBest =
@@ -52,7 +118,15 @@ export async function POST(request: NextRequest) {
       const startTime = performance.now()
 
       try {
-        const keystrokes = await callAIGateway(modelId, startText, targetText)
+        console.log(
+          `[run] invoking AI gateway challenge=${challengeId ?? "custom"} model=${modelId}`
+        )
+        const keystrokes = await callAIGateway(
+          modelId,
+          startText,
+          targetText,
+          effectiveApiKey
+        )
         const endTime = performance.now()
 
         const simulator = new VimSimulator(startText)
@@ -62,7 +136,8 @@ export async function POST(request: NextRequest) {
 
         const success = normalizeText(finalText) === normalizeText(targetText)
         const keystrokeCount = countKeystrokes(keystrokes)
-        const diffFromBest = keystrokeCount - bestHumanScore
+        const diffFromBest =
+          typeof bestHumanScore === "number" ? keystrokeCount - bestHumanScore : keystrokeCount
 
         const result: RunResult = {
           modelId,

@@ -1,3 +1,6 @@
+/* eslint-env node */
+/* global fetch, console, setTimeout, process */
+
 import fs from 'fs';
 import path from 'path';
 

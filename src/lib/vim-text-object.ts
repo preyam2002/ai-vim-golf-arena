@@ -36,6 +36,10 @@ export function getTextObject(
       ) {
         while (start > 0 && isWhitespace(currentLine[start - 1])) start--;
       }
+      // Ensure we capture exactly one trailing space if present (common for aw)
+      if (end < currentLine.length && isWhitespace(currentLine[end])) {
+        end++;
+      }
     }
 
     return {

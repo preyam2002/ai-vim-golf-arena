@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { DiffViewer } from "@/components/arena/diff-viewer";
 import type { RunResult } from "@/lib/types";
 
@@ -14,6 +14,20 @@ interface LeaderboardProps {
 }
 
 type SortKey = "rank" | "model" | "keystrokes" | "diff" | "time" | "status";
+
+const statusPriority: Record<RunResult["status"] | undefined, number> = {
+  complete: 0,
+  failed: 0,
+  undefined: 0,
+  verifying: 1,
+  "in-progress": 2,
+  pending: 2,
+  aborted: 3,
+  error: 4,
+};
+
+const isInProgressStatus = (status?: RunResult["status"]) =>
+  status === "in-progress" || status === "verifying" || status === "pending";
 
 export function Leaderboard({
   results,
@@ -69,6 +83,9 @@ export function Leaderboard({
 
   const sortedResults = useMemo(() => {
     const compareByRank = (a: RunResult, b: RunResult) => {
+      const statusDiff =
+        (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+      if (statusDiff !== 0) return statusDiff;
       if (a.success !== b.success) return a.success ? -1 : 1;
       if (a.keystrokeCount !== b.keystrokeCount)
         return a.keystrokeCount - b.keystrokeCount;
@@ -79,6 +96,11 @@ export function Leaderboard({
 
     return [...allResults].sort((a, b) => {
       let value = 0;
+      const statusDiff =
+        (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+      if (statusDiff !== 0) {
+        return statusDiff * direction;
+      }
       switch (sortConfig.key) {
         case "model":
           value = a.modelName.localeCompare(b.modelName);
@@ -94,7 +116,9 @@ export function Leaderboard({
           value = a.timeMs - b.timeMs;
           break;
         case "status":
-          value = Number(b.success) - Number(a.success);
+          value =
+            (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+          if (value === 0) value = Number(b.success) - Number(a.success);
           if (value === 0) value = compareByRank(a, b);
           break;
         case "rank":
@@ -105,10 +129,69 @@ export function Leaderboard({
     });
   }, [allResults, sortConfig]);
 
+  const firstFinishedResult =
+    sortedResults.find((r) => !isInProgressStatus(r.status)) ??
+    sortedResults[0];
+
   const activeResult =
     selectedResult ??
     sortedResults.find((r) => r.modelId === selectedResultId) ??
-    sortedResults[0];
+    firstFinishedResult;
+
+  const renderStatusBadge = (result: RunResult) => {
+    const status = result.status;
+    if (status === "in-progress" || status === "pending") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          In progress
+        </span>
+      );
+    }
+    if (status === "verifying") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-200">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Verifying
+        </span>
+      );
+    }
+    if (status === "aborted") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-300">
+          <XCircle className="h-3 w-3" />
+          Aborted
+        </span>
+      );
+    }
+    if (status === "error") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-200">
+          <XCircle className="h-3 w-3" />
+          Error
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-300">
+          <XCircle className="h-3 w-3" />
+          Failed
+        </span>
+      );
+    }
+    return result.success ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-300">
+        <CheckCircle2 className="h-3 w-3" />
+        Success
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-300">
+        <XCircle className="h-3 w-3" />
+        Failed
+      </span>
+    );
+  };
 
   return (
     <div className="rounded-lg border border-border bg-card">
@@ -183,7 +266,6 @@ export function Leaderboard({
           </thead>
           <tbody>
             {sortedResults.map((result, index) => {
-              const isUser = result.modelId === "user-local";
               const isSelected = selectedResultId === result.modelId;
               const isClickable = Boolean(onSelectResult);
 
@@ -201,8 +283,6 @@ export function Leaderboard({
                   }}
                   aria-selected={isSelected}
                   className={`border-b border-border last:border-0 hover:bg-muted/20 ${
-                    isUser ? "bg-primary/5" : ""
-                  } ${
                     isSelected
                       ? "bg-primary/10 ring-1 ring-primary/40"
                       : ""
@@ -225,11 +305,6 @@ export function Leaderboard({
                   </td>
                   <td className="px-4 py-3 font-medium text-foreground">
                     {result.modelName}
-                    {isUser && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        (You)
-                      </span>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-foreground">
                     {result.keystrokeCount}
@@ -241,17 +316,7 @@ export function Leaderboard({
                     {result.timeMs}ms
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {result.success ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-300">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Success
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-300">
-                        <XCircle className="h-3 w-3" />
-                        Failed
-                      </span>
-                    )}
+                    {renderStatusBadge(result)}
                   </td>
                 </tr>
               );
@@ -291,12 +356,26 @@ export function Leaderboard({
               {activeResult.modelName}
             </span>
           </div>
-          <DiffViewer
-            expected={expectedText}
-            actual={activeResult.finalText}
-            viewMode="split"
-            className="bg-background"
-          />
+          {isInProgressStatus(activeResult.status) ? (
+            <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+              Model is still running—diff will appear once it finishes.
+            </div>
+          ) : activeResult.status === "aborted" ? (
+            <div className="rounded-lg border border-dashed border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              This run was aborted before completion, so no diff is available.
+            </div>
+          ) : activeResult.status === "error" ? (
+            <div className="rounded-lg border border-dashed border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              The run failed due to an error—retry the model to view its output.
+            </div>
+          ) : (
+            <DiffViewer
+              expected={expectedText}
+              actual={activeResult.finalText}
+              viewMode="split"
+              className="bg-muted/20 rounded-lg border border-border p-3"
+            />
+          )}
         </div>
       )}
     </div>

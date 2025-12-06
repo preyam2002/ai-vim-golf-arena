@@ -32,25 +32,3 @@ export function LinkHints({ active, hints, buffer }: Props) {
   );
 }
 
-export function MatchHints({ active, hints, buffer }: Props) {
-  if (!active) return null;
-  return (
-    <div
-      className="vim-hints-layer vim-match-hints"
-      data-vim-ignore="true"
-      aria-hidden="true"
-    >
-      {hints.map((hint) => (
-        <div
-          key={hint.key}
-          className="vim-hint"
-          style={{ left: hint.x, top: hint.y }}
-        >
-          {hint.key.toUpperCase()}
-        </div>
-      ))}
-      {buffer ? <div className="vim-hint-buffer">[{buffer}]</div> : null}
-    </div>
-  );
-}
-

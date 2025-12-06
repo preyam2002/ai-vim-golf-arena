@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import {
   ChevronLeft,
   RotateCcw,
@@ -13,8 +13,6 @@ import {
   XCircle,
   Timer,
   History,
-  Columns,
-  Rows,
 } from "lucide-react";
 import { DiffViewer } from "@/components/arena/diff-viewer";
 import type { Challenge } from "@/lib/types";
@@ -47,8 +45,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-
 import { SimulatorEditor } from "@/components/arena/simulator-editor";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -62,6 +58,7 @@ interface LocalScore {
 export default function ChallengePlayPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [customChallenge, setCustomChallenge] = useState<Challenge | null>(
     null
@@ -73,7 +70,7 @@ export default function ChallengePlayPage() {
     "target" | "diff" | "history" | "leaderboard"
   >("target");
   const [submissionStatus, setSubmissionStatus] = useState<
-    "idle" | "correct" | "incorrect" | "given-up"
+    "idle" | "correct" | "incorrect" | "forfeited"
   >("idle");
   const [keystrokeCount, setKeystrokeCount] = useState(0);
   const [keystrokeHistory, setKeystrokeHistory] = useState<string[]>([]);
@@ -84,21 +81,17 @@ export default function ChallengePlayPage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  // Give Up Dialog state
-  const [showGiveUpDialog, setShowGiveUpDialog] = useState(false);
+  // Forfeit Dialog state
+  const [showForfeitDialog, setShowForfeitDialog] = useState(false);
   const [showKeystrokesDialog, setShowKeystrokesDialog] = useState(false);
 
   // Diff View Mode
-  const [diffViewMode, setDiffViewMode] = useState<"inline" | "split">(
-    "inline"
-  );
-
   // Local Leaderboard
   const [localScores, setLocalScores] = useState<LocalScore[]>([]);
 
   useEffect(() => {
     if (historyRef.current) {
-      historyRef.current.scrollTop = historyRef.current.scrollHeight;
+      historyRef.current.scrollLeft = historyRef.current.scrollWidth;
     }
   }, [keystrokeHistory]);
 
@@ -161,6 +154,17 @@ export default function ChallengePlayPage() {
 
   const challenge = id === "custom" ? customChallenge : data?.challenge;
 
+  useEffect(() => {
+    if (
+      id === "random" &&
+      !isLoading &&
+      challenge?.id &&
+      challenge.id !== "random"
+    ) {
+      router.replace(`/challenge/${challenge.id}/play`);
+    }
+  }, [id, isLoading, challenge?.id, router]);
+
   const handleReset = () => {
     setEditorKey((prev) => prev + 1);
     setSubmissionStatus("idle");
@@ -174,6 +178,7 @@ export default function ChallengePlayPage() {
   };
 
   const handleSubmit = () => {
+    setActiveTab("diff");
     if ((window as any).vimSubmit) {
       (window as any).vimSubmit();
     }
@@ -234,12 +239,12 @@ export default function ChallengePlayPage() {
     }
   };
 
-  const handleGiveUp = () => {
-    setSubmissionStatus("given-up");
+  const handleForfeit = () => {
+    setSubmissionStatus("forfeited");
     setIsTimerRunning(false);
-    setShowGiveUpDialog(false);
+    setShowForfeitDialog(false);
     setActiveTab("target");
-    toast.info("Challenge Given Up", {
+    toast.info("Challenge Forfeited", {
       description: "The target text is shown below.",
     });
   };
@@ -324,13 +329,13 @@ export default function ChallengePlayPage() {
                     Incorrect
                   </Badge>
                 )}
-                {submissionStatus === "given-up" && (
+                {submissionStatus === "forfeited" && (
                   <Badge
                     variant="secondary"
                     className="bg-yellow-500/15 text-yellow-600 hover:bg-yellow-500/25 border-yellow-500/20"
                   >
                     <Flag className="mr-1 h-3 w-3" />
-                    Given Up
+                    Forfeited
                   </Badge>
                 )}
               </div>
@@ -404,19 +409,20 @@ export default function ChallengePlayPage() {
               size="sm"
               onClick={handleSubmit}
               className="gap-2"
-              disabled={submissionStatus === "given-up"}
+              title="Submit with :w"
+              disabled={submissionStatus === "forfeited"}
             >
-              Submit
+              Submit (:w)
             </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => setShowKeystrokesDialog(true)}
-                >
-                  <History className="h-4 w-4" />
-                  All Keystrokes
-                </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowKeystrokesDialog(true)}
+            >
+              <History className="h-4 w-4" />
+              All Keystrokes
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -427,7 +433,10 @@ export default function ChallengePlayPage() {
               Reset
             </Button>
 
-            <Dialog open={showGiveUpDialog} onOpenChange={setShowGiveUpDialog}>
+            <Dialog
+              open={showForfeitDialog}
+              onOpenChange={setShowForfeitDialog}
+            >
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
@@ -435,18 +444,18 @@ export default function ChallengePlayPage() {
                   className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                   disabled={
                     submissionStatus === "correct" ||
-                    submissionStatus === "given-up"
+                    submissionStatus === "forfeited"
                   }
                 >
                   <Flag className="h-4 w-4" />
-                  Give Up
+                  Forfeit
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Give Up Challenge?</DialogTitle>
+                  <DialogTitle>Forfeit Challenge?</DialogTitle>
                   <DialogDescription>
-                    Are you sure you want to give up? This will mark the
+                    Are you sure you want to forfeit? This will mark the
                     challenge as failed and reveal the target text.
                   </DialogDescription>
                 </DialogHeader>
@@ -454,8 +463,8 @@ export default function ChallengePlayPage() {
                   <DialogClose asChild>
                     <Button variant="outline">Cancel</Button>
                   </DialogClose>
-                  <Button variant="destructive" onClick={handleGiveUp}>
-                    Yes, Give Up
+                  <Button variant="destructive" onClick={handleForfeit}>
+                    Yes, Forfeit
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -475,7 +484,9 @@ export default function ChallengePlayPage() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Total: {keystrokeHistory.length} keys</span>
                   {keystrokeHistory.length > 0 && (
-                    <span>Latest: {keystrokeHistory[keystrokeHistory.length - 1]}</span>
+                    <span>
+                      Latest: {keystrokeHistory[keystrokeHistory.length - 1]}
+                    </span>
                   )}
                 </div>
                 <ScrollArea className="mt-3 max-h-[50vh] rounded border border-border bg-muted/30 p-3">
@@ -517,7 +528,7 @@ export default function ChallengePlayPage() {
               onValueChange={(v) => setActiveTab(v as any)}
               className="flex-1 flex flex-col min-h-0"
             >
-              <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-2 shrink-0">
+              <div className="flex h-9 items-center justify-between border-b border-border bg-muted/50 px-4 shrink-0 gap-3">
                 <TabsList className="h-8">
                   <TabsTrigger value="target" className="text-xs">
                     Target
@@ -525,10 +536,7 @@ export default function ChallengePlayPage() {
                   <TabsTrigger
                     value="diff"
                     className="text-xs"
-                    disabled={
-                      submissionStatus === "idle" &&
-                      submissionStatus !== "given-up"
-                    }
+                    disabled={submissionStatus === "idle"}
                   >
                     Diff
                   </TabsTrigger>
@@ -546,7 +554,7 @@ export default function ChallengePlayPage() {
                   value="target"
                   className="h-full m-0 p-4 overflow-auto data-[state=active]:block hidden"
                 >
-                  <pre className="font-mono text-sm whitespace-pre-wrap break-words">
+                  <pre className="font-mono text-sm whitespace-pre-wrap wrap-break-word">
                     {challenge.targetText}
                   </pre>
                 </TabsContent>
@@ -554,27 +562,12 @@ export default function ChallengePlayPage() {
                   value="diff"
                   className="h-full m-0 p-4 overflow-auto data-[state=active]:block hidden"
                 >
-                  <div className="flex justify-end mb-2">
-                    <ToggleGroup
-                      type="single"
-                      value={diffViewMode}
-                      onValueChange={(v) => v && setDiffViewMode(v as any)}
-                      size="sm"
-                    >
-                      <ToggleGroupItem value="inline" aria-label="Inline View">
-                        <Rows className="h-4 w-4" />
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="split" aria-label="Split View">
-                        <Columns className="h-4 w-4" />
-                      </ToggleGroupItem>
-                    </ToggleGroup>
-                  </div>
                   {submissionStatus !== "idle" && (
                     <DiffViewer
                       expected={challenge.targetText}
                       actual={lastSubmission}
                       className="border-0 bg-transparent p-0"
-                      viewMode={diffViewMode}
+                      viewMode="split"
                     />
                   )}
                 </TabsContent>
@@ -591,11 +584,11 @@ export default function ChallengePlayPage() {
                     </div>
                   </div>
                   <ScrollArea className="flex-1 p-4">
-                    <div className="flex gap-1 overflow-x-auto whitespace-nowrap pb-2">
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                       {keystrokeHistory.map((key, i) => (
                         <kbd
                           key={i}
-                          className="rounded bg-background px-1.5 py-0.5 text-xs font-mono border border-border whitespace-nowrap min-w-[20px] text-center"
+                          className="rounded bg-background px-2 py-1 text-xs font-mono border border-border text-center"
                         >
                           {key === " " ? "␣" : key}
                         </kbd>
@@ -672,13 +665,12 @@ export default function ChallengePlayPage() {
                 <span className="font-medium text-foreground text-sm uppercase tracking-wider">
                   Vim Editor
                 </span>
-                <div className="flex items-center gap-4">
                 <div
                   ref={historyRef}
-                  className="flex items-center gap-1 overflow-x-auto max-w-[200px] no-scrollbar mask-linear-fade"
+                  className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto no-scrollbar mask-linear-fade justify-end"
                   style={{
                     maskImage:
-                      "linear-gradient(to right, transparent, black 20%)",
+                      "linear-gradient(to right, transparent, black 12%, black)",
                   }}
                 >
                   {keystrokeHistory.slice(-10).map((key, i) => (
@@ -689,7 +681,6 @@ export default function ChallengePlayPage() {
                       {key === " " ? "Space" : key}
                     </kbd>
                   ))}
-                </div>
                 </div>
               </div>
               <div className="flex-1 relative bg-black min-h-0 min-w-0">

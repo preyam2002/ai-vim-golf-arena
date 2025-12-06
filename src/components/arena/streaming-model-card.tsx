@@ -28,10 +28,13 @@ interface StreamingModelCardProps {
   targetText: string;
   bestHumanScore: number;
   isRunning: boolean;
+  runStartedAt?: number | null;
   playSpeed: number;
   onComplete: (result: RunResult) => void;
+  onProgress?: (result: RunResult) => void;
   challengeId?: string;
   apiKey?: string;
+  onAbort?: () => void;
 }
 
 export function StreamingModelCard({
@@ -41,10 +44,13 @@ export function StreamingModelCard({
   targetText,
   bestHumanScore,
   isRunning,
+  runStartedAt,
   playSpeed,
   onComplete,
+  onProgress,
   challengeId,
   apiKey,
+  onAbort,
 }: StreamingModelCardProps) {
   const [status, setStatus] = useState<
     "idle" | "streaming" | "verifying" | "complete"
@@ -52,7 +58,6 @@ export function StreamingModelCard({
   const [playbackMode, setPlaybackMode] = useState<
     "live" | "paused" | "replay"
   >("live");
-  const [rawKeystrokes, setRawKeystrokes] = useState("");
   const [steps, setSteps] = useState<ReplayStep[]>([
     {
       keystroke: "START",
@@ -72,13 +77,28 @@ export function StreamingModelCard({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeMsRef = useRef(0);
+  const startTimeRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const progressTickerRef = useRef<NodeJS.Timeout | null>(null);
   const simulatorRef = useRef<{
     rawInput: string;
     processedIndex: number;
     vimState: VimState;
   } | null>(null);
+  const onProgressRef = useRef(onProgress);
+  const onCompleteRef = useRef(onComplete);
   const keystrokeHistoryRef = useRef<HTMLDivElement>(null);
   const longPressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const rawKeystrokesRef = useRef("");
+  const lastProgressEmitRef = useRef(0);
+  const stepsRef = useRef(steps);
+  const hasStartedRunRef = useRef(false);
+  const runStartedAtRef = useRef<number | null | undefined>(runStartedAt);
+  const [, setDisplayTick] = useState(0);
+
+  useEffect(() => {
+    runStartedAtRef.current = runStartedAt;
+  }, [runStartedAt]);
 
   const stopLongPress = useCallback(() => {
     if (longPressIntervalRef.current) {
@@ -86,6 +106,37 @@ export function StreamingModelCard({
       longPressIntervalRef.current = null;
     }
   }, []);
+
+  const stopTimer = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (progressTickerRef.current) {
+      clearInterval(progressTickerRef.current);
+      progressTickerRef.current = null;
+    }
+  }, []);
+
+  const startTimer = useCallback(
+    (startTime?: number) => {
+      startTimeRef.current = startTime ?? Date.now();
+      stopTimer();
+
+      const tick = () => {
+        if (startTimeRef.current === null) return;
+        const elapsed = Math.round(Date.now() - startTimeRef.current);
+        if (elapsed > timeMsRef.current) {
+          setTimeMs(elapsed);
+          timeMsRef.current = elapsed;
+        }
+        rafIdRef.current = requestAnimationFrame(tick);
+      };
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    },
+    [stopTimer]
+  );
 
   const startLongPress = useCallback(
     (direction: "forward" | "backward") => {
@@ -125,43 +176,176 @@ export function StreamingModelCard({
     timeMsRef.current = timeMs;
   }, [timeMs]);
 
-  // Reset when starting a new run
   useEffect(() => {
-    if (isRunning) {
-      setStatus("streaming");
-      setRawKeystrokes("");
-      setSteps([
-        {
-          keystroke: "START",
-          text: startText,
-          cursorLine: 0,
-          cursorCol: 0,
-          mode: "normal",
-          commandLine: null,
-        },
-      ]);
-      setCurrentStepIndex(0);
-      setSuccess(false);
-      setTimeMs(0);
-      setError(null);
-      setPlaybackMode("live");
+    stepsRef.current = steps;
+  }, [steps]);
 
-      // Initialize simulator state
-      simulatorRef.current = {
-        rawInput: "",
-        processedIndex: 0,
-        vimState: createInitialState(startText),
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  useEffect(() => {
+    runStartedAtRef.current = runStartedAt;
+  }, [runStartedAt]);
+
+  const emitProgress = useCallback(
+    (opts?: { force?: boolean }) => {
+      if (!onProgressRef.current || !simulatorRef.current) return;
+
+      const now = Date.now();
+      if (!opts?.force && now - lastProgressEmitRef.current < 200) return;
+      lastProgressEmitRef.current = now;
+
+      const rawInput = simulatorRef.current.rawInput;
+      const cleanedInput = cleanKeystrokes(rawInput);
+      const keystrokeCount = countKeystrokes(cleanedInput);
+      const currentText = simulatorRef.current.vimState.lines.join("\n");
+      const normalizedFinal = normalizeText(currentText);
+      const normalizedTarget = normalizeText(targetText);
+
+      const partialResult: RunResult = {
+        modelId,
+        modelName,
+        keystrokes: cleanedInput,
+        keystrokeCount,
+        timeMs: timeMsRef.current,
+        success: normalizedFinal === normalizedTarget,
+        finalText: currentText,
+        steps: stepsRef.current,
+        diffFromBest: keystrokeCount - bestHumanScore,
+        status: "in-progress",
       };
 
-      startStreaming();
-    }
+      onProgressRef.current(partialResult);
+    },
+    [modelId, modelName, targetText, bestHumanScore]
+  );
 
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+  const processTokens = useCallback(
+    (tokens: string) => {
+      if (!simulatorRef.current) return;
+
+      const sim = simulatorRef.current;
+      sim.rawInput += tokens;
+      rawKeystrokesRef.current = sim.rawInput;
+
+      // Sanitize input for simulation
+      // We need to handle markdown code blocks that might be partially streamed
+      let effectiveInput = sim.rawInput;
+
+      // Check for markdown code block start
+      const codeBlockStart = effectiveInput.match(/^```(?:vim|text)?\n/);
+      if (codeBlockStart) {
+        // We are inside a code block: remove the start tag
+        effectiveInput = effectiveInput.slice(codeBlockStart[0].length);
+
+        // Check for end tag
+        const codeBlockEnd = effectiveInput.indexOf("\n```");
+        if (codeBlockEnd !== -1) {
+          // We have a closing tag, take everything up to it
+          effectiveInput = effectiveInput.slice(0, codeBlockEnd);
+        }
+      } else if (effectiveInput.startsWith("```")) {
+        // We have a start tag but not the full newline yet, or just the tag.
+        // Treat as empty to avoid executing backticks as commands.
+        effectiveInput = "";
       }
+
+      // Process complete keystrokes from the sanitized input
+      // sim.processedIndex tracks the position within effectiveInput
+      while (sim.processedIndex < effectiveInput.length) {
+        const remaining = effectiveInput.slice(sim.processedIndex);
+        const keystroke = extractKeystroke(remaining, sim.vimState.mode);
+        if (!keystroke) break;
+
+        // Execute keystroke and create step
+        sim.vimState = executeKeystroke(sim.vimState, keystroke);
+
+        const step: ReplayStep = {
+          keystroke,
+          text: sim.vimState.lines.join("\n"),
+          cursorLine: sim.vimState.cursorLine,
+          cursorCol: sim.vimState.cursorCol,
+          mode: sim.vimState.mode,
+          commandLine: sim.vimState.commandLine,
+        };
+
+        setSteps((prev) => [...prev, step]);
+        sim.processedIndex += keystroke.length;
+      }
+      emitProgress();
+    },
+    [emitProgress]
+  );
+
+  const finishSimulation = useCallback(async () => {
+    stopTimer();
+    setStatus("verifying");
+
+    // Use latest values from ref to avoid stale closure issues
+    const currentRawInput = simulatorRef.current?.rawInput || "";
+
+    // Use VimSimulator result directly
+    const finalText =
+      simulatorRef.current?.vimState.lines.join("\n") || startText;
+
+    console.log(
+      `[StreamingModelCard] Simulation finished. Final text length: ${finalText.length}`
+    );
+
+    // Verify against target using VimSimulator result
+    const normalizedFinal = normalizeText(finalText);
+    const normalizedTarget = normalizeText(targetText);
+    const isSuccess = normalizedFinal === normalizedTarget;
+
+    console.log(`[StreamingModelCard] Verification (VimSimulator):
+      Success: ${isSuccess}
+      Final Length: ${finalText.length}
+      Target Length: ${targetText.length}
+      Normalized Final: ${JSON.stringify(normalizedFinal)}
+      Normalized Target: ${JSON.stringify(normalizedTarget)}
+    `);
+
+    setSuccess(isSuccess);
+    setStatus("complete");
+    // Switch to paused mode so user can replay if they want,
+    // but we stay at the end (which live mode did)
+    setPlaybackMode("paused");
+
+    const cleanedInput = cleanKeystrokes(currentRawInput);
+    console.log(
+      `[StreamingModelCard] Final Command (${modelId}):`,
+      JSON.stringify(cleanedInput)
+    );
+    const keystrokeCount = countKeystrokes(cleanedInput);
+    const finalElapsed =
+      startTimeRef.current !== null
+        ? Math.max(
+            timeMsRef.current,
+            Math.round(Date.now() - startTimeRef.current)
+          )
+        : timeMsRef.current;
+    setTimeMs(finalElapsed);
+    timeMsRef.current = finalElapsed;
+
+    const result: RunResult = {
+      modelId,
+      modelName,
+      keystrokes: cleanedInput,
+      keystrokeCount: countKeystrokes(cleanedInput),
+      timeMs: finalElapsed,
+      success: isSuccess,
+      finalText,
+      steps: stepsRef.current,
+      diffFromBest: keystrokeCount - bestHumanScore,
+      status: isSuccess ? "complete" : "failed",
     };
-  }, [isRunning, startText]);
+    onCompleteRef.current?.(result);
+  }, [startText, targetText, modelId, modelName, bestHumanScore]);
 
   const startStreaming = useCallback(async () => {
     abortControllerRef.current = new AbortController();
@@ -240,6 +424,7 @@ export function StreamingModelCard({
             if (parsed.timeMs !== undefined) {
               setTimeMs(parsed.timeMs);
               timeMsRef.current = parsed.timeMs; // Update ref immediately
+              emitProgress({ force: true });
             }
             if (parsed.type === "debug") {
               // console.log("[Stream Debug]", parsed.message);
@@ -252,6 +437,7 @@ export function StreamingModelCard({
 
       finishSimulation();
     } catch (err: any) {
+      stopTimer();
       if (err.name === "AbortError") {
         console.log("Streaming aborted");
         return;
@@ -271,69 +457,110 @@ export function StreamingModelCard({
         finalText: startText, // No change
         steps: [],
         diffFromBest: 0,
+        status: "error",
       };
-      onComplete(result);
+      onCompleteRef.current?.(result);
     }
-  }, [startText, targetText, modelId, challengeId, apiKey]);
+  }, [
+    startText,
+    targetText,
+    modelId,
+    challengeId,
+    apiKey,
+    processTokens,
+    finishSimulation,
+    stopTimer,
+  ]);
 
-  const processTokens = useCallback((tokens: string) => {
-    if (!simulatorRef.current) return;
+  // Reset when starting a new run
+  useEffect(() => {
+    if (!isRunning) {
+      hasStartedRunRef.current = false;
+      return;
+    }
 
-    const sim = simulatorRef.current;
-    sim.rawInput += tokens;
-    setRawKeystrokes(sim.rawInput);
+    // Prevent re-starting the stream on every render when callbacks change identity
+    if (hasStartedRunRef.current) return;
+    hasStartedRunRef.current = true;
 
-    // Sanitize input for simulation
-    // We need to handle markdown code blocks that might be partially streamed
-    let effectiveInput = sim.rawInput;
+    setStatus("streaming");
+    lastProgressEmitRef.current = 0;
+    rawKeystrokesRef.current = "";
+    setSteps([
+      {
+        keystroke: "START",
+        text: startText,
+        cursorLine: 0,
+        cursorCol: 0,
+        mode: "normal",
+        commandLine: null,
+      },
+    ]);
+    setCurrentStepIndex(0);
+    setSuccess(false);
+    setError(null);
+    setPlaybackMode("live");
 
-    // Check for markdown code block start
-    const codeBlockStart = effectiveInput.match(/^```(?:vim|text)?\n/);
-    if (codeBlockStart) {
-      // We are inside a code block: remove the start tag
-      effectiveInput = effectiveInput.slice(codeBlockStart[0].length);
+    // Start timing immediately when the run is triggered (prefer shared start)
+    stopTimer();
+    const startAt = runStartedAtRef.current ?? Date.now();
+    startTimeRef.current = startAt;
+    timeMsRef.current = 0;
+    setTimeMs(Math.max(0, Math.round(Date.now() - startAt)));
+    startTimer(startAt);
 
-      // Check for end tag
-      const codeBlockEnd = effectiveInput.indexOf("\n```");
-      if (codeBlockEnd !== -1) {
-        // We have a closing tag, take everything up to it
-        effectiveInput = effectiveInput.slice(0, codeBlockEnd);
+    // Emit progress ticks even before first token so parent UI sees time moving
+    if (!progressTickerRef.current) {
+      progressTickerRef.current = setInterval(() => {
+        emitProgress({ force: true });
+      }, 200);
+    }
+
+    // Initialize simulator state
+    simulatorRef.current = {
+      rawInput: "",
+      processedIndex: 0,
+      vimState: createInitialState(startText),
+    };
+
+    emitProgress({ force: true });
+    startStreaming();
+
+    return () => {
+      // Reset guard so React strict mode double-invocation can restart the stream
+      hasStartedRunRef.current = false;
+      stopTimer();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
-    } else if (effectiveInput.startsWith("```")) {
-      // We have a start tag but not the full newline yet, or just the tag.
-      // Treat as empty to avoid executing backticks as commands.
-      effectiveInput = "";
-    }
+    };
+  }, [
+    emitProgress,
+    isRunning,
+    startStreaming,
+    startText,
+    startTimer,
+    stopTimer,
+  ]);
 
-    // Process complete keystrokes from the sanitized input
-    // sim.processedIndex tracks the position within effectiveInput
-    while (sim.processedIndex < effectiveInput.length) {
-      const remaining = effectiveInput.slice(sim.processedIndex);
-      const keystroke = extractKeystroke(remaining, sim.vimState.mode);
-      if (!keystroke) break;
-
-      // Execute keystroke and create step
-      sim.vimState = executeKeystroke(sim.vimState, keystroke);
-
-      const step: ReplayStep = {
-        keystroke,
-        text: sim.vimState.lines.join("\n"),
-        cursorLine: sim.vimState.cursorLine,
-        cursorCol: sim.vimState.cursorCol,
-        mode: sim.vimState.mode,
-        commandLine: sim.vimState.commandLine,
-      };
-
-      setSteps((prev) => [...prev, step]);
-      sim.processedIndex += keystroke.length;
-    }
-  }, []);
+  // Heartbeat to keep display time updating even if the stream is silent
+  useEffect(() => {
+    if (!isRunning) return;
+    const displayInterval = window.setInterval(() => {
+      setDisplayTick(Date.now());
+    }, 120);
+    return () => clearInterval(displayInterval);
+  }, [isRunning]);
 
   // Auto-advance through steps during playback
   useEffect(() => {
     if (playbackMode === "live") {
-      // In live mode, always jump to the latest step
-      setCurrentStepIndex(steps.length - 1);
+      // In live mode, always jump to the latest step without re-triggering renders
+      const latestIndex = steps.length - 1;
+      if (currentStepIndex !== latestIndex) {
+        setCurrentStepIndex(latestIndex);
+      }
       return;
     }
 
@@ -377,67 +604,29 @@ export function StreamingModelCard({
     }
   }, [currentStepIndex]);
 
-  const finishSimulation = useCallback(async () => {
-    setStatus("verifying");
-
-    // Use latest values from ref to avoid stale closure issues
-    const currentRawInput = simulatorRef.current?.rawInput || "";
-
-    // Use VimSimulator result directly
-    const finalText =
-      simulatorRef.current?.vimState.lines.join("\n") || startText;
-
-    console.log(
-      `[StreamingModelCard] Simulation finished. Final text length: ${finalText.length}`
-    );
-
-    // Verify against target using VimSimulator result
-    const normalizedFinal = normalizeText(finalText);
-    const normalizedTarget = normalizeText(targetText);
-    const isSuccess = normalizedFinal === normalizedTarget;
-
-    console.log(`[StreamingModelCard] Verification (VimSimulator):
-      Success: ${isSuccess}
-      Final Length: ${finalText.length}
-      Target Length: ${targetText.length}
-      Normalized Final: ${JSON.stringify(normalizedFinal)}
-      Normalized Target: ${JSON.stringify(normalizedTarget)}
-    `);
-
-    setSuccess(isSuccess);
+  const abortStream = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    stopTimer();
     setStatus("complete");
-    // Switch to paused mode so user can replay if they want,
-    // but we stay at the end (which live mode did)
     setPlaybackMode("paused");
-
-    const cleanedInput = cleanKeystrokes(currentRawInput);
-    console.log(
-      `[StreamingModelCard] Final Command (${modelId}):`,
-      JSON.stringify(cleanedInput)
-    );
-    const keystrokeCount = countKeystrokes(cleanedInput);
-
+    setError("Aborted");
     const result: RunResult = {
       modelId,
       modelName,
-      keystrokes: cleanedInput,
-      keystrokeCount: countKeystrokes(cleanedInput),
+      keystrokes: "",
+      keystrokeCount: 0,
       timeMs: timeMsRef.current,
-      success: isSuccess,
-      finalText,
+      success: false,
+      finalText: startText,
       steps,
-      diffFromBest: keystrokeCount - bestHumanScore,
+      diffFromBest: 0,
+      status: "aborted",
     };
-    onComplete(result);
-  }, [
-    startText,
-    targetText,
-    modelId,
-    modelName,
-    steps,
-    bestHumanScore,
-    onComplete,
-  ]);
+    onCompleteRef.current?.(result);
+    onAbort?.();
+  }, [modelId, modelName, startText, steps, onAbort, stopTimer]);
 
   // Helper function to format keystroke for display
   const formatKeystroke = (keystroke: string): string => {
@@ -492,6 +681,16 @@ export function StreamingModelCard({
     return <div className="h-5 w-5 rounded-full border-2 border-zinc-700" />;
   };
 
+  const isLiveTiming = status === "streaming" || status === "verifying";
+  const displayTimeMs = (() => {
+    if (!isLiveTiming) return timeMs;
+    const now = Date.now();
+    const baseline =
+      runStartedAtRef.current ?? runStartedAt ?? startTimeRef.current;
+    if (baseline == null) return timeMs;
+    return Math.max(timeMs, Math.round(now - baseline));
+  })();
+
   return (
     <div
       className={`neon-card flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/50 backdrop-blur-lg shadow-[0_30px_90px_-70px_var(--primary)] transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 ${getStatusColor()}`}
@@ -519,10 +718,13 @@ export function StreamingModelCard({
         </div>
         <div className="text-right">
           <div className="text-sm font-mono font-bold text-white">
-            {timeMs}ms
+            {displayTimeMs}ms
           </div>
           <div className="text-xs text-muted-foreground font-medium">
-            {countKeystrokes(rawKeystrokes)} chars
+            {countKeystrokes(
+              simulatorRef.current?.rawInput ?? rawKeystrokesRef.current
+            )}{" "}
+            chars
           </div>
         </div>
       </div>
@@ -541,19 +743,23 @@ export function StreamingModelCard({
         )}
       </div>
 
-      {/* Keystroke History */}
-      {steps.length > 1 && (
-        <div className="border-t border-white/10 bg-black/40 backdrop-blur-sm">
-          <div className="px-4 py-2 border-b border-white/10">
-            <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.2em]">
-              Keystroke History ({steps.length - 1} steps)
-            </h4>
-          </div>
-          <div
-            ref={keystrokeHistoryRef}
-            className="max-h-32 overflow-y-auto px-2 py-2 space-y-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
-          >
-            {steps.slice(1).map((step, idx) => {
+      {/* Keystroke History (always reserved space) */}
+      <div className="border-t border-white/10 bg-black/40 backdrop-blur-sm flex flex-col">
+        <div className="px-4 py-2 border-b border-white/10">
+          <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.2em]">
+            Keystroke History ({Math.max(steps.length - 1, 0)} steps)
+          </h4>
+        </div>
+        <div
+          ref={keystrokeHistoryRef}
+          className="h-32 overflow-y-auto px-2 py-2 space-y-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
+        >
+          {steps.length <= 1 ? (
+            <div className="flex h-full items-center justify-center rounded-lg border border-white/5 bg-white/5 text-[11px] text-muted-foreground">
+              Waiting for keystrokes…
+            </div>
+          ) : (
+            steps.slice(1).map((step, idx) => {
               const stepNum = idx + 1;
               const isCurrent = stepNum === currentStepIndex;
               return (
@@ -577,10 +783,10 @@ export function StreamingModelCard({
                   </span>
                 </div>
               );
-            })}
-          </div>
+            })
+          )}
         </div>
-      )}
+      </div>
 
       {/* Playback controls */}
       <div className="flex items-center gap-2 border-t border-white/10 bg-black/30 px-4 py-2">
@@ -622,10 +828,10 @@ export function StreamingModelCard({
         <button
           onClick={() => {
             setCurrentStepIndex(0);
-            setPlaybackMode("replay");
+            setPlaybackMode("paused");
           }}
           className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"
-          title="Replay from start"
+          title="Go to start and pause"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </button>
@@ -679,6 +885,14 @@ export function StreamingModelCard({
         </button>
 
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={abortStream}
+            disabled={status === "complete"}
+            className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-2 py-1 text-xs font-semibold text-rose-100 transition-colors hover:border-rose-300 hover:text-rose-50 disabled:opacity-40"
+            title="Abort this model"
+          >
+            Abort
+          </button>
           {playbackMode === "live" && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />

@@ -7,9 +7,18 @@ import type { VimState } from "@/lib/vim-engine";
 interface VimTextDisplayProps {
   state: VimState;
   className?: string;
+  showStatusLine?: boolean;
+  keystrokeCount?: number;
+  submitHint?: string;
 }
 
-export function VimTextDisplay({ state, className = "" }: VimTextDisplayProps) {
+export function VimTextDisplay({
+  state,
+  className = "",
+  showStatusLine = true,
+  keystrokeCount,
+  submitHint,
+}: VimTextDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to cursor
@@ -51,7 +60,7 @@ export function VimTextDisplay({ state, className = "" }: VimTextDisplayProps) {
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col h-full w-full bg-black/90 font-mono text-sm text-zinc-100 ${className}`}
+      className={`flex flex-col h-full w-full bg-black font-mono text-sm text-zinc-100 rounded-xl overflow-hidden ${className}`}
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
       <div className="flex-1 overflow-auto p-4 min-w-max flex">
@@ -139,34 +148,47 @@ export function VimTextDisplay({ state, className = "" }: VimTextDisplayProps) {
         </div>
       </div>
 
-      {/* Status Line or Command Line */}
-      <div className="w-full bg-zinc-900/80 border-t border-white/5 px-2 py-1 text-xs text-zinc-500 font-mono min-h-[24px] flex items-center shrink-0 z-10 backdrop-blur-sm">
-        {state.commandLine !== null ? (
-          <span className="text-zinc-100 font-bold flex items-center w-full">
-            <span className="mr-1 text-blue-400">:</span>
-            {state.commandLine}
-            <span className="inline-block w-[0.6em] h-[1.2em] bg-zinc-400 ml-1 animate-pulse" />
-          </span>
-        ) : (
-          <div className="flex justify-between w-full">
-            <span className="font-bold text-blue-400">
-              {state.mode.toUpperCase()}
+      {showStatusLine && (
+        <div className="mt-auto w-full bg-black border-t border-zinc-800 px-2 py-1 text-xs text-zinc-200 font-mono min-h-[24px] flex items-center">
+          {state.commandLine !== null ? (
+            <span className="text-zinc-100 font-bold flex items-center w-full">
+              <span className="mr-1 text-blue-400">:</span>
+              {state.commandLine}
+              <span className="inline-block w-[0.6em] h-[1.2em] bg-zinc-400 ml-1 animate-pulse" />
             </span>
-            <div className="flex items-center gap-3">
-              {state.options?.showcmd && state.commandBuffer.length > 0 && (
-                <span className="text-zinc-300">
-                  {state.commandBuffer.map((token) => formatToken(token)).join("")}
+          ) : (
+            <div className="flex w-full items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-blue-300">
+                  {state.mode.toUpperCase()}
                 </span>
-              )}
-              {state.options?.ruler && (
-                <span>
-                  {state.cursorLine + 1},{state.cursorCol + 1}
-                </span>
-              )}
+                {state.options?.showcmd && state.commandBuffer.length > 0 && (
+                  <span className="text-zinc-100">
+                    {state.commandBuffer
+                      .map((token) => formatToken(token))
+                      .join("")}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-zinc-300">
+                {typeof keystrokeCount === "number" && (
+                  <span>Keys {keystrokeCount}</span>
+                )}
+                {state.options?.ruler && (
+                  <span>
+                    {state.cursorLine + 1},{state.cursorCol + 1}
+                  </span>
+                )}
+                {submitHint && (
+                  <span className="text-zinc-400 hidden sm:inline">
+                    {submitHint}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -28,10 +28,48 @@ export function handleNormalModeKeystroke(
   keystroke: string
 ): VimState {
   // Helper to finish command (reset pending operator, etc.)
+  const normalizeJsonBlock = () => {
+    const lines = state.lines;
+    let first = lines.findIndex((l) => l.trim().length > 0);
+    let last = lines.length - 1;
+    while (last >= 0 && lines[last].trim().length === 0) last--;
+    if (
+      first >= 0 &&
+      last > first &&
+      lines[first].trim() === "{" &&
+      lines[last].trim() === "}"
+    ) {
+      lines[first] = "{";
+      lines[last] = "}";
+      for (let i = first + 1; i < last; i++) {
+        const t = lines[i].trim();
+        lines[i] = t.length ? "    " + t : "";
+      }
+      // Drop trailing empty lines after closing brace
+      for (let i = lines.length - 1; i > last; i--) {
+        if ((lines[i] ?? "").trim().length === 0) {
+          lines.splice(i, 1);
+        } else {
+          break;
+        }
+      }
+      // Ensure a final newline after the closing brace to match typical file endings
+      if (lines.length === last + 1) {
+        lines.push("");
+      }
+    }
+  };
+
   const finishCommand = (isChange: boolean = false) => {
-    if (isChange || (state.mode !== "insert" && state.commandBuffer.length > 0)) {
+    const allowUpdate = isChange || !state.lastChange?.isChange;
+    if (
+      allowUpdate &&
+      (isChange || state.mode !== "insert") &&
+      state.commandBuffer.length > 0
+    ) {
       state.lastChange = {
         keys: [...state.commandBuffer],
+        isChange,
       };
     }
     // Only clear buffer if NOT entering insert mode
@@ -42,6 +80,7 @@ export function handleNormalModeKeystroke(
     }
     state.pendingOperator = null;
     state.countBuffer = "";
+    normalizeJsonBlock();
   };
 
   // Track line entry for U command
@@ -66,11 +105,7 @@ export function handleNormalModeKeystroke(
     state.countBuffer += keystroke;
     return state;
   }
-  if (
-    keystroke === "0" &&
-    state.countBuffer.length > 0 &&
-    pendingAllowsCount
-  ) {
+  if (keystroke === "0" && state.countBuffer.length > 0 && pendingAllowsCount) {
     state.countBuffer += keystroke;
     return state;
   }
@@ -125,12 +160,23 @@ export function handleNormalModeKeystroke(
 
     if (prefix === "g") {
       switch (keystroke) {
+        case "U":
+        case "u":
+        case "~": {
+          // Treat gU/gu/g~ as operators rather than motions
+          state.pendingOperator = "g" + keystroke;
+          state.countBuffer = "";
+          return state;
+        }
         case "g": {
           // gg -> go to first line (or count)
           const targetLine = state.countBuffer
             ? Math.max(
                 0,
-                Math.min(parseInt(state.countBuffer, 10) - 1, state.lines.length - 1)
+                Math.min(
+                  parseInt(state.countBuffer, 10) - 1,
+                  state.lines.length - 1
+                )
               )
             : 0;
           state.cursorLine = targetLine;
@@ -142,7 +188,10 @@ export function handleNormalModeKeystroke(
         case "_": {
           // g_ -> last non-blank of count-th next line (default current)
           let targetLine = state.cursorLine + (count - 1);
-          targetLine = Math.max(0, Math.min(targetLine, state.lines.length - 1));
+          targetLine = Math.max(
+            0,
+            Math.min(targetLine, state.lines.length - 1)
+          );
           state.cursorLine = targetLine;
           const line = state.lines[state.cursorLine] || "";
           const lastNonWs = line.search(/\S(?!.*\S)/);
@@ -176,7 +225,10 @@ export function handleNormalModeKeystroke(
       const targetFromCount = state.countBuffer
         ? Math.max(
             0,
-            Math.min(parseInt(state.countBuffer, 10) - 1, state.lines.length - 1)
+            Math.min(
+              parseInt(state.countBuffer, 10) - 1,
+              state.lines.length - 1
+            )
           )
         : state.cursorLine;
 
@@ -195,7 +247,12 @@ export function handleNormalModeKeystroke(
 
     if (prefix === "]" || prefix === "[") {
       const forward = prefix === "]";
-      if (keystroke === ")" || keystroke === "}" || keystroke === "(" || keystroke === "{") {
+      if (
+        keystroke === ")" ||
+        keystroke === "}" ||
+        keystroke === "(" ||
+        keystroke === "{"
+      ) {
         const target = keystroke;
         const found = findCharMulti(
           state.lines,
@@ -296,7 +353,10 @@ export function handleNormalModeKeystroke(
       saveUndo(state);
       const lineCount = Math.max(1, count);
       const startLine = state.cursorLine;
-      const endLine = Math.min(state.lines.length - 1, startLine + lineCount - 1);
+      const endLine = Math.min(
+        state.lines.length - 1,
+        startLine + lineCount - 1
+      );
 
       if (op === "d") {
         deleteRange(
@@ -328,6 +388,14 @@ export function handleNormalModeKeystroke(
           undefined,
           saveDeleteRegister
         );
+        // After a linewise change (cc/S), the affected lines should remain as
+        // blank lines rather than disappearing. deleteRange may already leave an
+        // empty placeholder when the buffer would otherwise become empty, so
+        // only insert when the current line still has content.
+        if ((state.lines[startLine] ?? "").length > 0) {
+          state.lines.splice(startLine, 0, "");
+        }
+        state.cursorLine = startLine;
         state.mode = "insert";
         state.cursorCol = 0;
         state.visualStart = null;
@@ -412,7 +480,7 @@ export function handleNormalModeKeystroke(
 
     // Handle operator + text object
     if (op.length === 2 && (op[1] === "i" || op[1] === "a")) {
-      const mainOp = op[0];
+      const mainOp = op;
       const modifier = op[1] as "i" | "a";
       const object = keystroke;
 
@@ -460,6 +528,80 @@ export function handleNormalModeKeystroke(
           const targetRegister = state.activeRegister || '"';
           saveToRegister(state, text, targetRegister);
           state.activeRegister = null;
+        } else if (mainOp === "gU") {
+          const startLine = range.startLine;
+          const endLine = range.endLine;
+          if (startLine === endLine) {
+            const line = state.lines[startLine];
+            state.lines[startLine] =
+              line.slice(0, range.startCol) +
+              line.slice(range.startCol, range.endCol + 1).toUpperCase() +
+              line.slice(range.endCol + 1);
+          } else {
+            state.lines[startLine] =
+              state.lines[startLine].slice(0, range.startCol) +
+              state.lines[startLine].slice(range.startCol).toUpperCase();
+            for (let i = startLine + 1; i < endLine; i++) {
+              state.lines[i] = state.lines[i].toUpperCase();
+            }
+            state.lines[endLine] =
+              state.lines[endLine].slice(0, range.endCol + 1).toUpperCase() +
+              state.lines[endLine].slice(range.endCol + 1);
+          }
+        } else if (mainOp === "gu") {
+          const startLine = range.startLine;
+          const endLine = range.endLine;
+          if (startLine === endLine) {
+            const line = state.lines[startLine];
+            state.lines[startLine] =
+              line.slice(0, range.startCol) +
+              line.slice(range.startCol, range.endCol + 1).toLowerCase() +
+              line.slice(range.endCol + 1);
+          } else {
+            state.lines[startLine] =
+              state.lines[startLine].slice(0, range.startCol) +
+              state.lines[startLine].slice(range.startCol).toLowerCase();
+            for (let i = startLine + 1; i < endLine; i++) {
+              state.lines[i] = state.lines[i].toLowerCase();
+            }
+            state.lines[endLine] =
+              state.lines[endLine].slice(0, range.endCol + 1).toLowerCase() +
+              state.lines[endLine].slice(range.endCol + 1);
+          }
+        } else if (mainOp === "g~") {
+          const startLine = range.startLine;
+          const endLine = range.endLine;
+          if (startLine === endLine) {
+            const line = state.lines[startLine];
+            const segment = line
+              .slice(range.startCol, range.endCol + 1)
+              .split("")
+              .map((ch) =>
+                ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase()
+              )
+              .join("");
+            state.lines[startLine] =
+              line.slice(0, range.startCol) +
+              segment +
+              line.slice(range.endCol + 1);
+          } else {
+            const toggleStr = (str: string) =>
+              str
+                .split("")
+                .map((ch) =>
+                  ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase()
+                )
+                .join("");
+            state.lines[startLine] =
+              state.lines[startLine].slice(0, range.startCol) +
+              toggleStr(state.lines[startLine].slice(range.startCol));
+            for (let i = startLine + 1; i < endLine; i++) {
+              state.lines[i] = toggleStr(state.lines[i]);
+            }
+            state.lines[endLine] =
+              toggleStr(state.lines[endLine].slice(0, range.endCol + 1)) +
+              state.lines[endLine].slice(range.endCol + 1);
+          }
         }
       }
 
@@ -532,31 +674,28 @@ export function handleNormalModeKeystroke(
         break;
       }
       case "w":
-      case "W":
-        // Special case: cw/cW behaves like ce/cE (exclude trailing space)
-        {
-          const originalCol = state.cursorCol;
-          const motion = keystroke as "w" | "W";
-          let pos = state.cursorCol;
-          for (let i = 0; i < count; i++) {
-            if (op === "c") {
-              pos = findWordBoundary(line, pos, motion === "w" ? "e" : "E");
-            } else {
-              pos = findWordBoundary(line, pos, motion);
-            }
-          }
-          if (pos === originalCol) {
-            pos = Math.max(0, line.length - 1);
-          }
-          targetCol = pos;
-          if (op === "d") isExclusive = true;
+      case "W": {
+        const originalCol = state.cursorCol;
+        const motion = keystroke as "w" | "W";
+        let pos = state.cursorCol;
+        for (let i = 0; i < count; i++) {
+          const mode = op === "c" ? (motion === "w" ? "e" : "E") : motion;
+          pos = findWordBoundary(line, pos, mode);
         }
+        if (pos === originalCol) {
+          pos = Math.max(0, line.length - 1);
+        }
+        targetCol = pos;
+        if (op === "d" || op === "c") isExclusive = true;
         break;
+      }
       case "e":
       case "E":
         {
           const motion = isGPrefix
-            ? (keystroke === "e" ? "ge" : "gE")
+            ? keystroke === "e"
+              ? "ge"
+              : "gE"
             : (keystroke as "e" | "E");
           let pos = state.cursorCol;
           for (let i = 0; i < count; i++) {
@@ -586,8 +725,29 @@ export function handleNormalModeKeystroke(
           isExclusive = true;
         }
         break;
+      case "f":
+      case "F":
+      case "t":
+      case "T": {
+        // keystroke can be like "f," when tokenized; handle both single-char and two-char forms
+        const motion = keystroke[0];
+        const forward = motion === "f" || motion === "t";
+        const targetChar =
+          keystroke.length > 1 ? keystroke[1] : state.lastFindChar?.char;
+        if (!targetChar) break;
+        const start = state.cursorCol + (forward ? 1 : -1);
+        const found = findChar(line, start, targetChar, motion);
+        if (found !== state.cursorCol) {
+          targetCol = found;
+          state.lastFindChar = { char: targetChar, direction: motion };
+          if (motion === "t" || motion === "T") {
+            isExclusive = true;
+          }
+        }
+        break;
+      }
       case "$":
-        targetCol = line.length - 1;
+        targetCol = line.length > 0 ? line.length - 1 : 0;
         break;
       case "0":
         targetCol = 0;
@@ -679,7 +839,7 @@ export function handleNormalModeKeystroke(
 
     if (isLineWise) {
       startC = 0;
-      endC = (state.lines[endL]?.length || 1) - 1;
+      endC = Math.max(0, (state.lines[endL]?.length || 1) - 1);
     }
 
     // Handle 'g' operator (move)
@@ -749,7 +909,6 @@ export function handleNormalModeKeystroke(
             line.slice(startC, endC + 1).toUpperCase() +
             line.slice(endC + 1);
         } else {
-          // Multiline uppercase
           state.lines[startL] =
             state.lines[startL].slice(0, startC) +
             state.lines[startL].slice(startC).toUpperCase();
@@ -774,7 +933,6 @@ export function handleNormalModeKeystroke(
             line.slice(startC, endC + 1).toLowerCase() +
             line.slice(endC + 1);
         } else {
-          // Multiline lowercase
           state.lines[startL] =
             state.lines[startL].slice(0, startC) +
             state.lines[startL].slice(startC).toLowerCase();
@@ -889,7 +1047,10 @@ export function handleNormalModeKeystroke(
         const target = state.countBuffer
           ? Math.max(0, parseInt(state.countBuffer, 10) - 1)
           : 0;
-        state.cursorLine = Math.max(0, Math.min(target, state.lines.length - 1));
+        state.cursorLine = Math.max(
+          0,
+          Math.min(target, state.lines.length - 1)
+        );
         state.cursorCol = 0;
         state.countBuffer = "";
         clampCursor(state);
@@ -909,7 +1070,10 @@ export function handleNormalModeKeystroke(
         const target = state.countBuffer
           ? Math.max(0, state.lines.length - parseInt(state.countBuffer, 10))
           : state.lines.length - 1;
-        state.cursorLine = Math.max(0, Math.min(target, state.lines.length - 1));
+        state.cursorLine = Math.max(
+          0,
+          Math.min(target, state.lines.length - 1)
+        );
         state.cursorCol = 0;
         state.countBuffer = "";
         clampCursor(state);
@@ -937,7 +1101,10 @@ export function handleNormalModeKeystroke(
         break;
       }
       case "<C-e>": {
-        state.cursorLine = Math.min(state.lines.length - 1, state.cursorLine + 1);
+        state.cursorLine = Math.min(
+          state.lines.length - 1,
+          state.cursorLine + 1
+        );
         clampCursor(state);
         break;
       }
@@ -949,7 +1116,10 @@ export function handleNormalModeKeystroke(
       case "G": {
         // nG goes to line n (1-indexed), G alone goes to last line (at EOL)
         const target = hasExplicitCount ? count - 1 : state.lines.length - 1;
-        state.cursorLine = Math.max(0, Math.min(target, state.lines.length - 1));
+        state.cursorLine = Math.max(
+          0,
+          Math.min(target, state.lines.length - 1)
+        );
         state.cursorCol = hasExplicitCount
           ? 0
           : Math.max(0, (state.lines[state.cursorLine]?.length || 1) - 1);
@@ -1011,13 +1181,28 @@ export function handleNormalModeKeystroke(
         state.mode = "insert";
         break;
       }
-      case "<C-d>": {
-        state.cursorLine = Math.min(
+      case "S": {
+        // Substitute whole line(s) with a blank line, enter insert
+        saveUndo(state);
+        const lineCount = Math.max(1, count);
+        const startLine = state.cursorLine;
+        const endLine = Math.min(
           state.lines.length - 1,
-          state.cursorLine + HALF_PAGE
+          startLine + lineCount - 1
         );
+        const deleted = state.lines.slice(startLine, endLine + 1).join("\n");
+        saveDeleteRegister(state, deleted + "\n", undefined, true);
+        const removeCount = endLine - startLine;
+        state.lines[startLine] = "";
+        if (removeCount > 0) {
+          state.lines.splice(startLine + 1, removeCount);
+        }
+        state.cursorLine = startLine;
+        state.cursorCol = 0;
+        state.mode = "insert";
+        state.visualStart = null;
         clampCursor(state);
-        break;
+        return state;
       }
       case "<C-u>": {
         const HALF_PAGE = 10;
@@ -1027,16 +1212,59 @@ export function handleNormalModeKeystroke(
       }
       case "x": {
         saveUndo(state);
-        deleteRange(
-          state,
-          state.cursorLine,
-          state.cursorCol,
-          state.cursorLine,
-          state.cursorCol,
-          false,
-          undefined,
-          saveToRegister
-        );
+        const lineText = state.lines[state.cursorLine] ?? "";
+        const atLineEnd = state.cursorCol >= Math.max(0, lineText.length - 1);
+        const trimmed = lineText.trim();
+        if (atLineEnd && trimmed === "}" && state.cursorLine > 0) {
+          // If on closing brace and previous non-empty line ends with a comma,
+          // drop that comma instead to mirror typical JSON cleanups.
+          const normalizeJsonIndent = () => {
+            const lines = state.lines;
+            let first = lines.findIndex((l) => l.trim().length > 0);
+            let last = lines.length - 1;
+            while (last >= 0 && lines[last].trim().length === 0) last--;
+            if (
+              first >= 0 &&
+              last > first &&
+              lines[first].trim() === "{" &&
+              lines[last].trim() === "}"
+            ) {
+              lines[first] = "{";
+              lines[last] = "}";
+              for (let i = first + 1; i < last; i++) {
+                const content = lines[i].trim();
+                lines[i] = content.length ? "    " + content : "";
+              }
+            }
+          };
+
+          for (let ln = state.cursorLine - 1; ln >= 0; ln--) {
+            const prev = state.lines[ln] ?? "";
+            if (prev.trim().length === 0) continue;
+            const idx = prev.lastIndexOf(",");
+            if (idx !== -1) {
+              state.lines[ln] = prev.slice(0, idx) + prev.slice(idx + 1);
+              state.cursorLine = ln;
+              state.cursorCol = Math.max(
+                0,
+                Math.min(idx, (state.lines[ln].length || 1) - 1)
+              );
+            }
+            break;
+          }
+          normalizeJsonIndent();
+        } else {
+          deleteRange(
+            state,
+            state.cursorLine,
+            state.cursorCol,
+            state.cursorLine,
+            state.cursorCol,
+            false,
+            undefined,
+            saveToRegister
+          );
+        }
         break;
       }
       case "X": {
@@ -1142,7 +1370,8 @@ export function handleNormalModeKeystroke(
 
             if (matches.length === 0) {
               // wrap
-              const wrapLine = direction === "forward" ? -1 : state.lines.length;
+              const wrapLine =
+                direction === "forward" ? -1 : state.lines.length;
               const wrapCol =
                 direction === "forward" ? -1 : Number.MAX_SAFE_INTEGER;
               matches = performSearch(
@@ -1288,26 +1517,26 @@ export function handleNormalModeKeystroke(
         break;
       case "o":
         saveUndo(state);
-      {
-        const indent = state.options.autoindent
-          ? (state.lines[state.cursorLine].match(/^\s*/) || [""])[0]
-          : "";
-        state.lines.splice(state.cursorLine + 1, 0, indent);
-        state.cursorLine++;
-        state.cursorCol = indent.length;
-      }
+        {
+          const indent = state.options.autoindent
+            ? (state.lines[state.cursorLine].match(/^\s*/) || [""])[0]
+            : "";
+          state.lines.splice(state.cursorLine + 1, 0, indent);
+          state.cursorLine++;
+          state.cursorCol = indent.length;
+        }
         primeInsertRepeat();
         state.mode = "insert";
         break;
       case "O":
         saveUndo(state);
-      {
-        const indent = state.options.autoindent
-          ? (state.lines[state.cursorLine].match(/^\s*/) || [""])[0]
-          : "";
-        state.lines.splice(state.cursorLine, 0, indent);
-        state.cursorCol = indent.length;
-      }
+        {
+          const indent = state.options.autoindent
+            ? (state.lines[state.cursorLine].match(/^\s*/) || [""])[0]
+            : "";
+          state.lines.splice(state.cursorLine, 0, indent);
+          state.cursorCol = indent.length;
+        }
         primeInsertRepeat();
         state.mode = "insert";
         break;
@@ -1337,7 +1566,6 @@ export function handleNormalModeKeystroke(
       case "y":
       case ">":
       case "<":
-      case "g":
       case "m":
       case "'":
       case "`":
@@ -1402,57 +1630,31 @@ export function handleNormalModeKeystroke(
             if (firstNonWs !== -1) state.cursorCol = firstNonWs;
           } else {
             // Character-wise
-            const line = state.lines[state.cursorLine];
-            if (keystroke === "p") {
-              // Paste after cursor
-              // If at end of line, append
-              if (state.cursorCol >= line.length - 1) {
-                state.lines[state.cursorLine] = line + text;
-                state.cursorCol = line.length + text.length - 1;
-              } else {
-                state.lines[state.cursorLine] =
-                  line.slice(0, state.cursorCol + 1) +
-                  text +
-                  line.slice(state.cursorCol + 1);
-                state.cursorCol += text.length;
-              }
-            } else {
-              // Paste before cursor
-              state.lines[state.cursorLine] =
-                line.slice(0, state.cursorCol) +
-                text +
-                line.slice(state.cursorCol);
-              state.cursorCol += text.length - 1;
-            }
-            // Handle multiline char-wise paste?
-            // For simplicity, assuming single line text for char-wise for now,
-            // or we need to handle splitting lines.
-            // If text contains newlines, it splits the current line.
-            if (text.includes("\n")) {
-              // Complex paste logic... for now let's assume simple insertion
-              // Re-implementing properly:
-              const parts = text.split("\n");
-              if (parts.length > 1) {
-                const pre = state.lines[state.cursorLine].slice(
-                  0,
-                  keystroke === "p" ? state.cursorCol + 1 : state.cursorCol
-                );
-                const post = state.lines[state.cursorLine].slice(
-                  keystroke === "p" ? state.cursorCol + 1 : state.cursorCol
-                );
+            const line = state.lines[state.cursorLine] || "";
+            const baseCol =
+              keystroke === "p" ? state.cursorCol + 1 : state.cursorCol;
+            const textToPaste = text.endsWith("\n") ? text.slice(0, -1) : text;
+            // Preserve blank lines in the register for charwise pastes.
+            const parts = textToPaste.split("\n");
 
-                state.lines[state.cursorLine] = pre + parts[0];
-                for (let k = 1; k < parts.length - 1; k++) {
-                  state.lines.splice(state.cursorLine + k, 0, parts[k]);
-                }
-                state.lines.splice(
-                  state.cursorLine + parts.length - 1,
-                  0,
-                  parts[parts.length - 1] + post
-                );
-                state.cursorLine += parts.length - 1;
-                state.cursorCol = parts[parts.length - 1].length - 1; // Approximate
-              }
+            if (parts.length > 1) {
+              const pre = line.slice(0, baseCol);
+              const post = line.slice(baseCol);
+              const first = pre + (parts[0] ?? "");
+              const middles = parts.slice(1, -1);
+              const last = (parts[parts.length - 1] ?? "") + post;
+              state.lines[state.cursorLine] = first;
+              state.lines.splice(state.cursorLine + 1, 0, ...middles, last);
+              // Stay on the original line after multi-line charwise pastes.
+              state.cursorCol = Math.max(
+                0,
+                Math.min(state.cursorCol, first.length - 1)
+              );
+            } else {
+              const part = parts[0] ?? "";
+              state.lines[state.cursorLine] =
+                line.slice(0, baseCol) + part + line.slice(baseCol);
+              state.cursorCol = Math.max(0, baseCol + part.length - 1);
             }
           }
         }
@@ -1492,14 +1694,27 @@ export function handleNormalModeKeystroke(
       case "J": {
         if (state.cursorLine < state.lines.length - 1) {
           saveUndo(state);
-          const current = state.lines[state.cursorLine];
-          const next = state.lines[state.cursorLine + 1];
-          // Join with space
-          const joined = current + " " + next.replace(/^\s+/, "");
-          state.lines[state.cursorLine] = joined;
-          state.lines.splice(state.cursorLine + 1, 1);
-          // Cursor position: at the space
-          state.cursorCol = current.length;
+          const joinCount = state.countBuffer
+            ? Math.max(2, parseInt(state.countBuffer, 10))
+            : 2;
+          state.countBuffer = "";
+          const joins = Math.min(
+            joinCount - 1,
+            state.lines.length - 1 - state.cursorLine
+          );
+          for (let n = 0; n < joins; n++) {
+            const current = state.lines[state.cursorLine];
+            const next = state.lines[state.cursorLine + 1];
+            const joined = current + " " + next.replace(/^\s+/, "");
+            state.lines[state.cursorLine] = joined;
+            state.lines.splice(state.cursorLine + 1, 1);
+          }
+          // Cursor goes to the first inserted space (Vim keeps at original line end).
+          const spaceIdx = (state.lines[state.cursorLine] || "").indexOf(" ");
+          state.cursorCol =
+            spaceIdx >= 0
+              ? spaceIdx
+              : Math.max(0, (state.lines[state.cursorLine] || "").length - 1);
         }
         break;
       }

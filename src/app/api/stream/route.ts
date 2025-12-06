@@ -2,13 +2,34 @@ import type { NextRequest } from "next/server";
 import type { RunResult } from "@/lib/types";
 import {
   availableModels,
-  getGatewayCompletionsUrl,
+  callAIGateway,
   cleanKeystrokes,
 } from "@/lib/ai-gateway";
-import {
-  getOfflineSolution,
-  hasOfflineSolution,
-} from "@/lib/offline-library";
+import { getOfflineSolution, hasOfflineSolution } from "@/lib/offline-library";
+import { isDefaultChallengeId } from "@/lib/challenge-source";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+export const maxDuration = 300;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function withCors(headers: HeadersInit = {}) {
+  return { ...corsHeaders, ...headers };
+}
+
+export async function OPTIONS() {
+  return new Response("ok", {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
 
 const SYSTEM_PROMPT = `You are an expert Vim golfer competing for the MINIMUM keystroke count. Every keystroke matters.
 
@@ -43,6 +64,25 @@ ggdG
 3dd`;
 
 export async function POST(request: NextRequest) {
+  try {
+    return await handleStreamPost(request);
+  } catch (error: any) {
+    console.error("[Stream API] Fatal top-level error:", error);
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : typeof error === "object"
+        ? JSON.stringify(error)
+        : String(error);
+
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: withCors({ "Content-Type": "application/json" }),
+    });
+  }
+}
+
+async function handleStreamPost(request: NextRequest) {
   const body = await request.json();
   const {
     startText,
@@ -51,11 +91,13 @@ export async function POST(request: NextRequest) {
     challengeId,
     apiKey: userApiKey,
   } = body;
+  const systemApiKey = process.env.AI_GATEWAY_API_KEY;
+  const effectiveApiKey = userApiKey || systemApiKey;
 
   if (!startText || !targetText || !modelId) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
       status: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: withCors({ "Content-Type": "application/json" }),
     });
   }
 
@@ -69,11 +111,31 @@ export async function POST(request: NextRequest) {
     challengeId && getOfflineSolution(challengeId, modelId);
 
   if (cachedSolution) {
+    console.log(
+      `[stream] offline cache hit challenge=${challengeId} model=${modelId}`
+    );
     return streamFromCachedSolution(cachedSolution);
   }
 
+  const isDefault = challengeId ? isDefaultChallengeId(challengeId) : false;
+
+  const { store } = challengeId ? await import("@/lib/store") : { store: null };
+
+  // Check DB/Redis cache for default challenges
+  if (challengeId && isDefault && store) {
+    const stored = await store.getResult(challengeId, modelId);
+    if (stored) {
+      console.log(
+        `[stream] default db cache hit challenge=${challengeId} model=${modelId}`
+      );
+      return streamFromCachedSolution(stored);
+    }
+    console.warn(
+      `[stream] default cache miss challenge=${challengeId} model=${modelId} (will generate with apiKey)`
+    );
+  }
+
   // Check if this is the daily challenge
-  const { store } = await import("@/lib/store");
   const { getDailyChallenge } = await import("@/lib/challenge-source");
 
   const today = new Date().toISOString().split("T")[0];
@@ -88,86 +150,34 @@ export async function POST(request: NextRequest) {
   const isDaily = challengeId && challengeId === dailyId;
   console.log(`[Stream API] isDaily: ${isDaily}`);
 
-  let apiKey = process.env.AI_GATEWAY_API_KEY;
-  let useCache = false;
-
   if (isDaily) {
-    // For daily challenge:
-    // 1. Check if we have a cached result
-    const cachedResult = await store.getResult(challengeId, modelId);
+    const cachedResult = store
+      ? await store.getResult(challengeId, modelId)
+      : undefined;
     if (cachedResult) {
-      // Simulate stream from cached result
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          const cleanKeys = cleanKeystrokes(cachedResult.keystrokes);
-          const tokens = cleanKeys.split("");
-          const delay = Math.max(
-            1,
-            Math.floor(cachedResult.timeMs / tokens.length)
-          );
-
-          for (const token of tokens) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "token", content: token })}\n\n`
-              )
-            );
-            await new Promise((resolve) => setTimeout(resolve, delay));
-          }
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({
-                type: "done",
-                timeMs: cachedResult.timeMs,
-              })}\n\n`
-            )
-          );
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      console.log(
+        `[stream] daily cache hit challenge=${challengeId} model=${modelId}`
+      );
+      return streamFromCachedSolution(cachedResult);
     }
-    // 2. If no cache, use system key and save result later
-    useCache = true;
-  } else {
-    // For non-daily challenges, we now allow using the system API key as well
-    // if (!userApiKey) {
-    //   console.log(
-    //     `[Stream API] Missing API Key for non-daily challenge. isDaily: ${isDaily}, challengeId: ${challengeId}, dailyId: ${dailyId}`
-    //   );
-    //   return new Response(
-    //     JSON.stringify({
-    //       error: "API Key required for custom/random challenges",
-    //       debug: { isDaily, challengeId, dailyId },
-    //     }),
-    //     {
-    //       status: 401,
-    //       headers: { "Content-Type": "application/json" },
-    //     }
-    //   );
-    // }
-    apiKey = userApiKey || process.env.AI_GATEWAY_API_KEY;
-  }
-
-  if (!process.env.AI_GATEWAY_URL || !apiKey) {
-    return new Response(
-      JSON.stringify({ error: "AI Gateway configuration missing" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+    console.warn(
+      `[stream] daily cache miss challenge=${challengeId} model=${modelId} (will generate with apiKey)`
     );
   }
 
-  const completionsUrl = getGatewayCompletionsUrl();
+  // Any generation path requires an apiKey when cache is missing
+  if (!effectiveApiKey) {
+    return new Response(
+      JSON.stringify({
+        error: "apiKey is required when no cached solution exists",
+        debug: { challengeId, dailyId, isDaily, isDefault },
+      }),
+      {
+        status: 401,
+        headers: withCors({ "Content-Type": "application/json" }),
+      }
+    );
+  }
 
   const prompt = `START TEXT:
 \`\`\`
@@ -179,77 +189,50 @@ TARGET TEXT:
 ${targetText}
 \`\`\`
 
-Output ONLY the Vim keystrokes to transform START into TARGET:`;
+Return ONLY the Vim keystrokes to transform START into TARGET.
+Do not include markdown, quotes, explanations, or extra lines.`;
 
   try {
-    const aiResponse = await fetch(completionsUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 10000,
-        temperature: 0.1,
-        stream: true,
-        stop: ["```"], // Stop on markdown blocks
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
+    const startTime = Date.now();
+    console.log(
+      `[stream] invoking AI gateway challenge=${
+        challengeId ?? "custom"
+      } model=${modelId}`
+    );
+    const keystrokes = await callAIGateway(
+      modelId,
+      startText,
+      targetText,
+      effectiveApiKey
+    );
+    const cleanedKeystrokes = cleanKeystrokes(keystrokes);
+    if (!cleanedKeystrokes.trim()) {
       return new Response(
         JSON.stringify({
-          error: `AI Gateway error: ${aiResponse.status} - ${errorText}`,
+          error: "Model returned empty keystrokes",
+          debug: { modelId, challengeId, isDaily },
         }),
         {
-          status: 500,
+          status: 502,
           headers: { "Content-Type": "application/json" },
         }
       );
     }
-
-    // Create a TransformStream to process SSE and emit our own events
+    const tokens = cleanedKeystrokes.split("");
     const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-
-    let fullKeystrokes = "";
-    const startTime = Date.now();
     const tokenTimeline: { token: string; timestampMs: number }[] = [];
+    const tokenDelayMs = Math.max(
+      1,
+      Math.min(10, Math.floor(500 / Math.max(tokens.length, 1)))
+    );
 
     const stream = new ReadableStream({
       async start(controller) {
-        console.log("[Stream API] Starting stream controller");
-
-        // Helper to safely enqueue data
-        const safeEnqueue = (data: Uint8Array) => {
-          try {
-            controller.enqueue(data);
-            return true;
-          } catch (e) {
-            // Ignore if controller is already closed
-            if (
-              e instanceof TypeError &&
-              (e.message.includes("Controller is already closed") ||
-                e.message.includes("The stream is not in a state"))
-            ) {
-              console.log("[Stream API] Controller closed, stopping stream");
-              return false;
-            }
-            throw e;
-          }
-        };
         let persisted = false;
         const persistResult = async (timeMs: number) => {
           if (persisted || !challengeId) return;
           persisted = true;
           const { store } = await import("@/lib/store");
-          const cleanedKeystrokes = cleanKeystrokes(fullKeystrokes);
           await store.saveResult(challengeId, {
             modelId,
             modelName: model.name ?? modelId,
@@ -263,200 +246,40 @@ Output ONLY the Vim keystrokes to transform START into TARGET:`;
             tokenTimeline: tokenTimeline.slice(),
           });
         };
-        const reader = aiResponse.body?.getReader();
-        if (!reader) {
-          console.error("[Stream API] No reader available from AI response");
-          controller.close();
-          return;
-        }
 
-        let buffer = "";
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              console.log("[Stream API] Reader done");
-              break;
-            }
-
-            // console.log(`[Stream API] Received chunk size: ${value.length}`);
-            buffer += decoder.decode(value, { stream: true });
-
-            // Process complete SSE lines
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6).trim();
-                // Send debug log to client
-                // Send debug log to client
-                if (
-                  !safeEnqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({
-                        type: "debug",
-                        message: `Received: ${data.slice(0, 100)}...`,
-                      })}\n\n`
-                    )
-                  )
-                ) {
-                  return;
-                }
-
-                if (data === "[DONE]") {
-                  console.log("[Stream API] Stream complete");
-                  const endTime = Date.now();
-                  const timeMs = endTime - startTime;
-
-              await persistResult(timeMs);
-
-                  safeEnqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ type: "done", timeMs })}\n\n`
-                    )
-                  );
-                  continue;
-                }
-
-                try {
-                  const parsed = JSON.parse(data);
-                  const content = parsed.choices?.[0]?.delta?.content;
-                  const token =
-                    typeof content === "string"
-                      ? content
-                      : Array.isArray(content)
-                      ? content.join("")
-                      : "";
-                  if (token) {
-                    const timestampMs = Date.now() - startTime;
-                    fullKeystrokes += token;
-                    tokenTimeline.push({ token, timestampMs });
-
-                    if (
-                      !safeEnqueue(
-                        encoder.encode(
-                          `data: ${JSON.stringify({
-                            type: "token",
-                            content: token,
-                            timeMs: timestampMs,
-                          })}\n\n`
-                        )
-                      )
-                    ) {
-                      return;
-                    }
-                  } else {
-                    // Log missing content to client
-                    // Log missing content to client
-                    if (
-                      !safeEnqueue(
-                        encoder.encode(
-                          `data: ${JSON.stringify({
-                            type: "debug",
-                            message: `Missing content in: ${JSON.stringify(
-                              parsed
-                            )}`,
-                          })}\n\n`
-                        )
-                      )
-                    ) {
-                      return;
-                    }
-                  }
-                } catch (e) {
-                  console.error(
-                    "[Stream API] JSON parse error:",
-                    e,
-                    "Data:",
-                    data
-                  );
-                  // Skip malformed JSON
-                }
-              }
-            }
-          }
-
-          // Handle buffer... (omitted for brevity, same logic)
-          if (
-            buffer.startsWith("data: ") &&
-            buffer.slice(6).trim() !== "[DONE]"
-          ) {
-            try {
-              const parsed = JSON.parse(buffer.slice(6).trim());
-              const content = parsed.choices?.[0]?.delta?.content;
-              const token =
-                typeof content === "string"
-                  ? content
-                  : Array.isArray(content)
-                  ? content.join("")
-                  : "";
-              if (token) {
-                const timestampMs = Date.now() - startTime;
-                fullKeystrokes += token;
-                tokenTimeline.push({ token, timestampMs });
-                if (
-                  !safeEnqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({
-                        type: "token",
-                        content: token,
-                        timeMs: timestampMs,
-                      })}\n\n`
-                    )
-                  )
-                ) {
-                  return;
-                }
-              }
-            } catch {}
-          }
-
-          const endTime = Date.now();
-          const timeMs = endTime - startTime;
-
-          await persistResult(timeMs);
-
-          safeEnqueue(
+        for (const token of tokens) {
+          const timestampMs = Date.now() - startTime;
+          tokenTimeline.push({ token, timestampMs });
+          controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: "done", timeMs })}\n\n`
+              `data: ${JSON.stringify({
+                type: "token",
+                content: token,
+                timeMs: timestampMs,
+              })}\n\n`
             )
           );
-        } catch (error: any) {
-          console.error("[Stream API] Stream error:", error);
-          const errorMessage =
-            error instanceof Error
-              ? error.message
-              : typeof error === "object"
-              ? JSON.stringify(error)
-              : String(error);
-
-          // Only try to send error if controller is likely open
-          try {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "error",
-                  message: errorMessage,
-                })}\n\n`
-              )
-            );
-          } catch (e) {
-            // Ignore close errors in error handler
-          }
-        } finally {
-          controller.close();
+          await sleep(tokenDelayMs);
         }
+
+        const timeMs = Date.now() - startTime;
+        await persistResult(timeMs);
+
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "done", timeMs })}\n\n`
+          )
+        );
+        controller.close();
       },
     });
 
     return new Response(stream, {
-      headers: {
+      headers: withCors({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-      },
+      }),
     });
   } catch (error: any) {
     console.error("[Stream API] Fatal error:", error);
@@ -467,10 +290,16 @@ Output ONLY the Vim keystrokes to transform START into TARGET:`;
         ? JSON.stringify(error)
         : String(error);
 
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: errorMessage,
+        debug: { challengeId, dailyId, isDaily, modelId },
+      }),
+      {
+        status: 502,
+        headers: withCors({ "Content-Type": "application/json" }),
+      }
+    );
   }
 }
 
@@ -489,8 +318,8 @@ function buildTokenTimeline(result: RunResult) {
 
   const step =
     result.timeMs && result.timeMs > 0
-      ? Math.max(1, Math.round(result.timeMs / chars.length))
-      : 10;
+      ? Math.max(10, Math.round(result.timeMs / Math.max(chars.length, 1)))
+      : 15; // enforce a perceptible cadence for derived timelines
 
   let current = 0;
   return chars.map((token, index) => {
@@ -513,7 +342,7 @@ function streamFromCachedSolution(result: RunResult) {
     async start(controller) {
       let lastTs = 0;
       for (const event of timeline) {
-        const delay = Math.max(0, event.timestampMs - lastTs);
+        const delay = Math.max(10, event.timestampMs - lastTs); // ensure visible token pacing from cache
         if (delay > 0) {
           await sleep(delay);
         }
@@ -544,11 +373,11 @@ function streamFromCachedSolution(result: RunResult) {
   });
 
   return new Response(stream, {
-    headers: {
+    headers: withCors({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-    },
+    }),
   });
 }
 

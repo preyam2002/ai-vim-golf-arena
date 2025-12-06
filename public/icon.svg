@@ -1,26 +1,25 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    @media (prefers-color-scheme: light) {
-      .background { fill: black; }
-      .foreground { fill: white; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .background { fill: white; }
-      .foreground { fill: black; }
-    }
-  </style>
-  <g clip-path="url(#clip0_7960_43945)">
-    <rect class="background" width="180" height="180" rx="37" />
-    <g style="transform: scale(95%); transform-origin: center">
-      <path class="foreground"
-        d="M101.141 53H136.632C151.023 53 162.689 64.6662 162.689 79.0573V112.904H148.112V79.0573C148.112 78.7105 148.098 78.3662 148.072 78.0251L112.581 112.898C112.701 112.902 112.821 112.904 112.941 112.904H148.112V126.672H112.941C98.5504 126.672 86.5638 114.891 86.5638 100.5V66.7434H101.141V100.5C101.141 101.15 101.191 101.792 101.289 102.422L137.56 66.7816C137.255 66.7563 136.945 66.7434 136.632 66.7434H101.141V53Z" />
-      <path class="foreground"
-        d="M65.2926 124.136L14 66.7372H34.6355L64.7495 100.436V66.7372H80.1365V118.47C80.1365 126.278 70.4953 129.958 65.2926 124.136Z" />
-    </g>
-  </g>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vim logo">
   <defs>
-    <clipPath id="clip0_7960_43945">
-      <rect width="180" height="180" fill="white" />
-    </clipPath>
+    <linearGradient id="vim-bg" x1="40" y1="32" x2="220" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b1f14" />
+      <stop offset="1" stop-color="#0f2a1a" />
+    </linearGradient>
   </defs>
+  <rect x="12" y="12" width="232" height="232" rx="44" fill="url(#vim-bg)" />
+  <g transform="translate(128 128) rotate(45)">
+    <rect x="-76" y="-76" width="152" height="152" rx="20" fill="#198754" stroke="#0b1f14" stroke-width="12" />
+    <rect x="-60" y="-60" width="120" height="120" rx="14" fill="#cfead6" fill-opacity="0.12" />
+  </g>
+  <path
+    d="M76 68H106L126 140L151 68H180L138 188H113L76 68Z"
+    fill="#e7f5ed"
+    stroke="#0b1f14"
+    stroke-width="10"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M156 104L180 188H156L138 128L156 104Z"
+    fill="#0b1f14"
+    fill-opacity="0.65"
+  />
 </svg>

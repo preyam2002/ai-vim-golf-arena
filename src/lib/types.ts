@@ -23,6 +23,14 @@ export interface RunResult {
   finalText: string;
   steps: ReplayStep[];
   diffFromBest: number;
+  status?:
+    | "pending"
+    | "in-progress"
+    | "verifying"
+    | "complete"
+    | "failed"
+    | "aborted"
+    | "error";
   /**
    * Detailed token arrival timeline for replaying the exact streaming cadence.
    * timestampMs is relative to stream start.

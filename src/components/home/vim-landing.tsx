@@ -27,8 +27,8 @@ const shortcutItems = [
 
 const panes = [
   { title: "main.lua", body: ["local arena = require('vim.arena')", "arena.start({ mode = 'blackout' })", "arena.stream_keystrokes(true)"], status: "-- INSERT --", accent: "from-emerald-500/20 to-emerald-300/10" },
-  { title: "quickfix", body: ["1 matches found", "[1] precision duel ready", "[2] ghost cursor armed"], status: "-- NORMAL --", accent: "from-sky-500/20 to-cyan-300/10" },
-  { title: "help vim-arena", body: [":ArenaOpen  Launch the duel UI", ":ArenaKeystrokes  Toggle overlay", ":ArenaStatus  Show current mode"], status: "-- HELP --", accent: "from-amber-500/20 to-orange-300/10" },
+  { title: "quickfix", body: ["1 matches found", "[1] precision challenge ready", "[2] ghost cursor armed"], status: "-- NORMAL --", accent: "from-sky-500/20 to-cyan-300/10" },
+  { title: "help vim-arena", body: [":ArenaOpen  Launch the challenge UI", ":ArenaKeystrokes  Toggle overlay", ":ArenaStatus  Show current mode"], status: "-- HELP --", accent: "from-amber-500/20 to-orange-300/10" },
 ];
 
 function Keycap({ children }: { children: string }) {
@@ -79,7 +79,7 @@ export function VimLandingHero() {
               onFocus={() => convergenceRef.current?.pulse()}
               onClick={() => convergenceRef.current?.pulse()}
             >
-              Launch daily duel
+              Launch daily
               <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>
             <Link
@@ -184,7 +184,7 @@ export function VimShortcutsRail() {
           href="/challenge/random"
           className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-foreground transition-colors duration-200 hover:border-primary/60 hover:text-primary"
         >
-          Shuffle a duel
+          Shuffle a challenge
           <ArrowRight className="h-4 w-4" />
         </Link>
       </div>

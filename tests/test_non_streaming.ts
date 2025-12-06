@@ -1,8 +1,5 @@
 // Quick test to call LLM without streaming
-import {
-  availableModels,
-  getGatewayCompletionsUrl,
-} from "./src/lib/ai-gateway";
+import { availableModels, callAIGateway } from "../src/lib/ai-gateway";
 
 const SYSTEM_PROMPT = `You are an expert Vim golfer competing for the MINIMUM keystroke count. Every keystroke matters.
 
@@ -101,49 +98,11 @@ async function testNonStreaming() {
     process.exit(1);
   }
 
-  const completionsUrl = getGatewayCompletionsUrl();
-  const modelId = "openai/gpt-4o";
-
-  const prompt = `START TEXT:
-\`\`\`
-${startText}
-\`\`\`
-
-TARGET TEXT:
-\`\`\`
-${targetText}
-\`\`\`
-
-Output ONLY the Vim keystrokes to transform START into TARGET:`;
+  const modelId = availableModels[0]?.id ?? "openai/gpt-4o-mini";
 
   console.log("Making non-streaming API call...\n");
 
-  const response = await fetch(completionsUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      max_tokens: 2000,
-      temperature: 0.1,
-      stream: false, // NO STREAMING
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`API Error: ${response.status} - ${errorText}`);
-    process.exit(1);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  const content = await callAIGateway(modelId, startText, targetText, apiKey);
 
   console.log("RAW LLM OUTPUT:");
   console.log("=".repeat(80));

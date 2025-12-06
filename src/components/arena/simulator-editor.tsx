@@ -22,11 +22,15 @@ export function SimulatorEditor({
   const [state, setState] = useState<VimState>(() =>
     createInitialState(startText)
   );
+  const stateRef = useRef<VimState>(createInitialState(startText));
   const [isReady, setIsReady] = useState(false);
+  const [keystrokeDisplay, setKeystrokeDisplay] = useState(0);
   const keystrokeCountRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const onFinishRef = useRef(onFinish);
+  const lastKeyRef = useRef<string | null>(null);
+  const commandCaptureRef = useRef<string | null>(null);
 
   // Update ref when onFinish changes
   useEffect(() => {
@@ -35,37 +39,101 @@ export function SimulatorEditor({
 
   // Initialize
   useEffect(() => {
-    setState(createInitialState(startText));
+    const initial = createInitialState(startText);
+    stateRef.current = initial;
+    setState(initial);
     keystrokeCountRef.current = 0;
     setIsReady(true);
   }, [startText]);
 
-  const translateKey = useCallback((e: { key: string; ctrlKey: boolean; metaKey: boolean; }) => {
-    if (e.key === "Escape") return "<Esc>";
-    if (e.key === "Enter") return "<CR>";
-    if (e.key === "Backspace") return "<BS>";
-    if (e.key === "Tab") return "<Tab>";
-    if (e.key === "ArrowUp") return "<Up>";
-    if (e.key === "ArrowDown") return "<Down>";
-    if (e.key === "ArrowLeft") return "<Left>";
-    if (e.key === "ArrowRight") return "<Right>";
-    if (e.key === "Delete") return "<Del>";
-    if ((e.ctrlKey || e.metaKey) && e.key.length === 1) {
-      return `<C-${e.key.toLowerCase()}>`;
-    }
-    if (e.key.length === 1) return e.key;
-    return null;
-  }, []);
+  const translateKey = useCallback(
+    (e: { key: string; ctrlKey: boolean; metaKey: boolean }) => {
+      if (e.key === "Escape") return "<Esc>";
+      if (e.key === "Enter") return "<CR>";
+      if (e.key === "Backspace") return "<BS>";
+      if (e.key === "Tab") return "<Tab>";
+      if (e.key === "ArrowUp") return "<Up>";
+      if (e.key === "ArrowDown") return "<Down>";
+      if (e.key === "ArrowLeft") return "<Left>";
+      if (e.key === "ArrowRight") return "<Right>";
+      if (e.key === "Delete") return "<Del>";
+      if ((e.ctrlKey || e.metaKey) && e.key.length === 1) {
+        return `<C-${e.key.toLowerCase()}>`;
+      }
+      if (e.key.length === 1) return e.key;
+      return null;
+    },
+    []
+  );
 
   const processKeystroke = useCallback(
     (keystroke: string) => {
       keystrokeCountRef.current += 1;
       const currentCount = keystrokeCountRef.current;
       onKeystroke?.(currentCount, keystroke);
-      setState((prev) => executeKeystroke(prev, keystroke));
+      setKeystrokeDisplay(currentCount);
+      const prevState = stateRef.current;
+      const nextState = executeKeystroke(prevState, keystroke);
+      stateRef.current = nextState;
+
+      // Capture command-line submits like :w
+      const shouldSubmitFromCommand = (() => {
+        // Clear on escape
+        if (keystroke === "<Esc>") {
+          commandCaptureRef.current = null;
+          return false;
+        }
+
+        // Start capture from normal mode on :
+        if (!commandCaptureRef.current) {
+          if (prevState.mode === "normal" && keystroke === ":") {
+            commandCaptureRef.current = ":";
+          }
+          return false;
+        }
+
+        // Handle backspace edits
+        if (keystroke === "<BS>") {
+          const trimmed =
+            commandCaptureRef.current.length > 1
+              ? commandCaptureRef.current.slice(0, -1)
+              : null;
+          commandCaptureRef.current = trimmed;
+          return false;
+        }
+
+        // Finalize on <CR>
+        if (keystroke === "<CR>") {
+          const cmd = commandCaptureRef.current.slice(1).trim().toLowerCase();
+          commandCaptureRef.current = null;
+          return ["w"].includes(cmd);
+        }
+
+        // Append simple characters
+        if (keystroke.length === 1 && !keystroke.startsWith("<")) {
+          commandCaptureRef.current += keystroke;
+        }
+        return false;
+      })();
+
+      if (shouldSubmitFromCommand) {
+        onFinishRef.current(nextState.lines.join("\n"));
+        commandCaptureRef.current = null;
+        lastKeyRef.current = null;
+      } else {
+        lastKeyRef.current = keystroke === "<Esc>" ? null : keystroke;
+      }
+
+      setState(nextState);
     },
     [onKeystroke]
   );
+
+  // Handle submit (called when user wants to submit their solution)
+  const handleSubmit = useCallback(() => {
+    const text = stateRef.current.lines.join("\n");
+    onFinishRef.current(text);
+  }, []);
 
   // Handle keyboard input (React handler on the hidden input + container capture)
   const handleKeyDown = useCallback(
@@ -79,7 +147,7 @@ export function SimulatorEditor({
       }
       processKeystroke(ks);
     },
-    [processKeystroke, translateKey]
+    [handleSubmit, processKeystroke, translateKey]
   );
 
   // Global capture to catch Ctrl/Cmd+V even if focus drifts
@@ -92,12 +160,6 @@ export function SimulatorEditor({
     document.addEventListener("keydown", listener, true);
     return () => document.removeEventListener("keydown", listener, true);
   }, [handleKeyDown]);
-
-  // Handle submit (called when user wants to submit their solution)
-  const handleSubmit = useCallback(() => {
-    const text = state.lines.join("\n");
-    onFinishRef.current(text);
-  }, [state.lines]);
 
   // Expose submit for parent/global trigger (used by toolbar button)
   useEffect(() => {
@@ -124,7 +186,7 @@ export function SimulatorEditor({
   return (
     <div
       ref={containerRef}
-      className="neon-card relative h-full w-full min-h-0 min-w-0 overflow-hidden rounded-2xl bg-black/70 border border-white/10 cursor-text backdrop-blur-lg shadow-[0_30px_90px_-70px_var(--primary)]"
+      className="relative h-full w-full min-h-0 min-w-0 overflow-hidden rounded-2xl bg-black/80 border border-white/10 cursor-text backdrop-blur-lg shadow-none"
       onClick={handleContainerClick}
       onKeyDownCapture={handleKeyDown as any}
       tabIndex={0}
@@ -168,39 +230,13 @@ export function SimulatorEditor({
       />
 
       {/* Vim Display */}
-      <VimTextDisplay state={state} className="h-full" />
-
-      {/* Submit Button */}
-      <div className="absolute bottom-4 right-4 z-50">
-        <button
-          onClick={handleSubmit}
-          disabled={!isReady}
-          className={`group relative overflow-hidden rounded-xl px-5 py-2.5 text-sm font-semibold shadow-lg transition-all duration-300 ${
-            isReady
-              ? "bg-gradient-to-r from-primary to-accent text-primary-foreground hover:shadow-[0_20px_60px_-30px_var(--primary)] hover:-translate-y-0.5 active:scale-95"
-              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-          }`}
-        >
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
-          <span className="relative flex items-center gap-2">
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            Submit Solution
-          </span>
-        </button>
-      </div>
-
+      <VimTextDisplay
+        state={state}
+        className="h-full"
+        showStatusLine
+        keystrokeCount={keystrokeDisplay}
+        submitHint="Submit: :w"
+      />
     </div>
   );
 }

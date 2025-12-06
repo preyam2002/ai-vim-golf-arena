@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { StreamingModelCard } from "./streaming-model-card";
 import { InteractiveModelCard } from "./interactive-model-card";
-import { Loader2, Play, RotateCcw } from "lucide-react";
+import { Loader2, Play, RotateCcw, Square } from "lucide-react";
 import type { Challenge, RunResult } from "@/lib/types";
 
 interface LiveArenaProps {
@@ -24,49 +24,126 @@ export function LiveArena({
   const [isRunning, setIsRunning] = useState(false);
   const [runKey, setRunKey] = useState(0); // Used to reset/restart all cards
   const [playSpeed, setPlaySpeed] = useState(100);
-  const [completedResults, setCompletedResults] = useState<
-    Map<string, RunResult>
-  >(new Map());
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [latestResults, setLatestResults] = useState<Map<string, RunResult>>(
+    new Map()
+  );
+  const latestResultsRef = useRef<Map<string, RunResult>>(new Map());
+  const [completedModels, setCompletedModels] = useState<Set<string>>(
+    new Set()
+  );
+  const [abortedModels, setAbortedModels] = useState<Set<string>>(new Set());
+
+  const getStatusRank = useCallback((result: RunResult) => {
+    switch (result.status) {
+      case "complete":
+      case "failed":
+      case undefined:
+        return 0;
+      case "verifying":
+        return 1;
+      case "in-progress":
+      case "pending":
+        return 2;
+      case "aborted":
+        return 3;
+      case "error":
+        return 4;
+      default:
+        return 2;
+    }
+  }, []);
+
+  const sortResults = useCallback(
+    (arr: RunResult[]) => {
+      return [...arr].sort((a, b) => {
+        const statusDiff = getStatusRank(a) - getStatusRank(b);
+        if (statusDiff !== 0) return statusDiff;
+        if (a.success !== b.success) return a.success ? -1 : 1;
+        if (a.keystrokeCount !== b.keystrokeCount)
+          return a.keystrokeCount - b.keystrokeCount;
+        return a.timeMs - b.timeMs;
+      });
+    },
+    [getStatusRank]
+  );
+
+  const upsertResult = useCallback(
+    (result: RunResult, markComplete = false) => {
+      setLatestResults((prev) => {
+        const next = new Map(prev);
+        next.set(result.modelId, result);
+        latestResultsRef.current = next;
+        return next;
+      });
+
+      if (markComplete) {
+        setCompletedModels((prev) => {
+          const next = new Set(prev);
+          next.add(result.modelId);
+
+          if (next.size === selectedModels.length) {
+            setIsRunning(false);
+          }
+
+          return next;
+        });
+      }
+    },
+    [selectedModels.length]
+  );
+
+  useEffect(() => {
+    const sorted = sortResults(Array.from(latestResults.values()));
+    onResultsComplete(sorted);
+  }, [latestResults, onResultsComplete, sortResults]);
+
+  const resetState = useCallback(() => {
+    setRunKey((prev) => prev + 1);
+    const emptyMap = new Map();
+    setLatestResults(emptyMap);
+    latestResultsRef.current = emptyMap;
+    setCompletedModels(new Set());
+    setAbortedModels(new Set());
+    setRunStartedAt(null);
+    onResultsComplete([]);
+  }, [onResultsComplete]);
 
   const handleRun = useCallback(() => {
+    resetState();
+    setRunStartedAt(Date.now());
     setIsRunning(true);
-    setRunKey((prev) => prev + 1);
-    setCompletedResults(new Map());
-  }, []);
+  }, [resetState]);
 
   const handleReset = useCallback(() => {
     setIsRunning(false);
-    setRunKey((prev) => prev + 1);
-    setCompletedResults(new Map());
-  }, []);
+    resetState();
+  }, [resetState]);
 
   const handleModelComplete = useCallback(
     (result: RunResult) => {
-      setCompletedResults((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(result.modelId, result);
-
-        // Check if all models completed
-        if (newMap.size === selectedModels.length) {
-          const allResults = Array.from(newMap.values());
-          // Sort by success, then keystroke count, then time
-          allResults.sort((a, b) => {
-            if (a.success !== b.success) return a.success ? -1 : 1;
-            if (a.keystrokeCount !== b.keystrokeCount)
-              return a.keystrokeCount - b.keystrokeCount;
-            return a.timeMs - b.timeMs;
-          });
-          // Defer to avoid setState during render
-          setTimeout(() => {
-            onResultsComplete(allResults);
-            setIsRunning(false);
-          }, 0);
-        }
-
-        return newMap;
-      });
+      upsertResult(
+        {
+          ...result,
+          status: result.status ?? (result.success ? "complete" : "failed"),
+        },
+        true
+      );
     },
-    [selectedModels.length, onResultsComplete]
+    [upsertResult]
+  );
+
+  const handleModelProgress = useCallback(
+    (result: RunResult) => {
+      upsertResult(
+        {
+          ...result,
+          status: result.status ?? "in-progress",
+        },
+        false
+      );
+    },
+    [upsertResult]
   );
 
   if (selectedModels.length === 0) {
@@ -104,12 +181,25 @@ export function LiveArena({
           </button>
           <button
             onClick={handleReset}
-            disabled={!isRunning && completedResults.size === 0}
+            disabled={!isRunning && latestResults.size === 0}
             className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-medium text-foreground transition-all duration-200 hover:border-primary/60 hover:text-primary disabled:opacity-50"
           >
             <RotateCcw className="h-4 w-4" />
             Reset
           </button>
+          {isRunning && (
+            <button
+              onClick={() => {
+                setAbortedModels(new Set(selectedModels));
+                setIsRunning(false);
+                setRunKey((prev) => prev + 1);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-400/50 bg-rose-500/15 px-4 py-2.5 font-medium text-rose-100 transition-all duration-200 hover:border-rose-300 hover:text-rose-50"
+            >
+              <Square className="h-4 w-4" />
+              Abort all
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-4 md:gap-6">
           <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
@@ -130,7 +220,7 @@ export function LiveArena({
           {isRunning && (
             <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              {completedResults.size}/{selectedModels.length} complete
+              {completedModels.size}/{selectedModels.length} complete
             </div>
           )}
         </div>
@@ -148,19 +238,9 @@ export function LiveArena({
             : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
         }`}
       >
-        {selectedModels.map((modelId) =>
-          modelId === "user" ? (
-            <InteractiveModelCard
-              key={`${modelId}-${runKey}`}
-              modelId={modelId}
-              modelName={modelNames[modelId] || "You"}
-              startText={challenge.startText}
-              targetText={challenge.targetText}
-              bestHumanScore={challenge.bestHumanScore}
-              isRunning={isRunning}
-              onComplete={handleModelComplete}
-            />
-          ) : (
+        {selectedModels
+          .filter((id) => id !== "user")
+          .map((modelId) => (
             <StreamingModelCard
               key={`${modelId}-${runKey}`}
               modelId={modelId}
@@ -168,14 +248,22 @@ export function LiveArena({
               startText={challenge.startText}
               targetText={challenge.targetText}
               bestHumanScore={challenge.bestHumanScore}
-              isRunning={isRunning}
+              isRunning={isRunning && !abortedModels.has(modelId)}
+              runStartedAt={runStartedAt}
               playSpeed={playSpeed}
               onComplete={handleModelComplete}
+              onProgress={handleModelProgress}
               challengeId={challenge.id}
               apiKey={apiKey}
+              onAbort={() =>
+                setAbortedModels((prev) => {
+                  const next = new Set(prev);
+                  next.add(modelId);
+                  return next;
+                })
+              }
             />
-          )
-        )}
+          ))}
       </div>
     </div>
   );

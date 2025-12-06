@@ -1,6 +1,36 @@
 import { VimState } from "./vim-types";
 import { clampCursor, saveUndo } from "./vim-utils";
 
+function escapeRegex(pattern: string): string {
+  return pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildSafeRegex(pattern: string, flags: string): RegExp | null {
+  if (pattern.length > 10_000) {
+    console.warn(
+      `[VimEngine] Skipping regex build: pattern too long (${pattern.length} chars)`
+    );
+    return null;
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch (firstError) {
+    try {
+      const escaped = escapeRegex(pattern);
+      return new RegExp(escaped, flags);
+    } catch (secondError) {
+      console.warn(
+        `[VimEngine] Regex build failed; skipping substitute. pattern="${pattern.slice(
+          0,
+          200
+        )}"${pattern.length > 200 ? "..." : ""}`,
+        secondError
+      );
+      return null;
+    }
+  }
+}
+
 // Tokenizer for Vim expressions
 enum TokenType {
   STRING,
@@ -288,12 +318,18 @@ export function executeExCommand(
     return state;
   }
 
-  // Global command :[range]g/pat/d
-  const globalMatch = cmd.match(/^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?g\/(.+?)\/d$/);
+  // Global/Inverse global command :[range]g[!]/pat/d or :[range]v[!]/pat/d
+  const globalMatch = cmd.match(
+    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?([gv])(!)?\/(.+?)\/d$/
+  );
   if (globalMatch) {
     saveUndo(state);
     const rangeStr = globalMatch[1];
-    let pattern = globalMatch[2];
+    const cmdType = globalMatch[2]; // g or v
+    const hasBang = globalMatch[3] === "!";
+    // v is inverse by default; g! is inverse; v! behaves like g
+    const negate = cmdType === "v" ? !hasBang : hasBang;
+    let pattern = globalMatch[4];
 
     // Simplified regex handling: assume input is mostly compatible with JS regex
     // but handle common Vim-specific escapes if needed.
@@ -315,13 +351,41 @@ export function executeExCommand(
       state.lines = state.lines.filter((line: string, index: number) => {
         if (index < startLine || index > endLine) return true;
         const match = regex.test(line);
-        return !match;
+        const shouldDelete = negate ? !match : match;
+        return !shouldDelete;
       });
 
       if (state.lines.length === 0) state.lines.push("");
       clampCursor(state);
     } catch (e) {
       console.error("Global command failed", e);
+    }
+    finishCommand(state);
+    return state;
+  }
+
+  // Global move to top (used for reversing via :g/^/m0)
+  const globalMoveTop = cmd.match(/^g\/(.+?)\/m0$/);
+  if (globalMoveTop) {
+    saveUndo(state);
+    let pattern = globalMoveTop[1];
+    pattern = pattern.replace(/\\\|/g, "|");
+    pattern = pattern.replace(/\\([^+?()|])/g, "$1");
+    try {
+      const caseInsensitive =
+        state.options.ignorecase &&
+        (!state.options.smartcase || pattern.toLowerCase() === pattern);
+      const regex = new RegExp(pattern, caseInsensitive ? "i" : "");
+      const matched: string[] = [];
+      const others: string[] = [];
+      for (const line of state.lines) {
+        if (regex.test(line)) matched.push(line);
+        else others.push(line);
+      }
+      state.lines = matched.reverse().concat(others);
+      clampCursor(state);
+    } catch (e) {
+      console.error("Global move command failed", e);
     }
     finishCommand(state);
     return state;
@@ -370,6 +434,12 @@ export function executeExCommand(
         .replace(/\\\|/g, "|")
         .replace(/\\\{/g, "{")
         .replace(/\\\}/g, "}");
+
+      // Prefer earlier matches before capture groups to better mirror Vim's
+      // backtracking behavior for patterns like ".*\\([A-Z_]\\+\\).*".
+      pattern = pattern.replace(/\.\*\(/g, ".*?(");
+      // Allow optional brace after $ or { in patterns like [${]\([^}]*\)
+      pattern = pattern.replace(/\[\$\{]\(\[\^}]\*\)/g, "[${]{?([^}]*)");
     }
 
     replacement = replacement.replace(/\\(\d)/g, "$$$1");
@@ -390,8 +460,21 @@ export function executeExCommand(
       const lineRegexFlags = (global ? "g" : "") + (caseInsensitive ? "i" : "");
       const multiRegexFlags =
         (global ? "g" : "") + "m" + (caseInsensitive ? "i" : "");
-      const lineRegex = new RegExp(pattern, lineRegexFlags);
-      const multiRegex = new RegExp(pattern, multiRegexFlags);
+      const lineRegex = buildSafeRegex(pattern, lineRegexFlags);
+      const multiRegex = buildSafeRegex(pattern, multiRegexFlags);
+      if (!lineRegex || !multiRegex) {
+        console.warn(
+          `[VimEngine] Skipping :s command due to invalid regex (pattern="${pattern.slice(
+            0,
+            200
+          )}"${pattern.length > 200 ? "..." : ""})`
+        );
+        finishCommand(state);
+        return state;
+      }
+
+      const iterativeMultiline =
+        global && hasNewline && /\\[1-9]/.test(pattern);
 
       if (isExpression) {
         for (let i = startLine; i <= endLine; i++) {
@@ -403,7 +486,16 @@ export function executeExCommand(
       } else if (hasNewline) {
         const linesSubset = state.lines.slice(startLine, endLine + 1);
         const text = linesSubset.join("\n");
-        const newText = text.replace(multiRegex, replacement);
+        let newText = text;
+        let prev: string;
+        if (iterativeMultiline) {
+          do {
+            prev = newText;
+            newText = newText.replace(multiRegex, replacement);
+          } while (newText !== prev);
+        } else {
+          newText = newText.replace(multiRegex, replacement);
+        }
         const newLines = newText.split("\n");
 
         state.lines.splice(startLine, endLine - startLine + 1, ...newLines);

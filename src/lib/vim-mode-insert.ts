@@ -101,6 +101,7 @@ export function handleInsertModeKeystroke(
     // Save last change for dot repeat
     state.lastChange = {
       keys: [...state.commandBuffer],
+      isChange: true,
     };
     state.commandBuffer = [];
 

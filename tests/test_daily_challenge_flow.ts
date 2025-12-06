@@ -170,10 +170,10 @@ async function testStoreIntegration() {
   const daily = getDailyChallenge(today);
 
   // Try to get a cached result
-  const result = await store.getResult(daily.id, "google/gemini-2.0-flash-001");
+  const result = await store.getResult(daily.id, "openai/gpt-4o");
 
   if (result) {
-    log(`Found cached result for Gemini`);
+    log(`Found cached result for AI Gateway model`);
     console.assert(result.keystrokes, "Cached result has keystrokes");
     console.assert(
       typeof result.timeMs === "number",

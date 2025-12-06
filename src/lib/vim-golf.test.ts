@@ -5,17 +5,22 @@ import {
   tokenizeKeystrokes,
 } from "./vim-engine";
 
-function runGolfTest(
-  initialText: string,
-  keystrokes: string,
-  expectedText: string
-) {
+function runGolf(initialText: string, keystrokes: string) {
   let state = createInitialState(initialText);
   const tokens = tokenizeKeystrokes(keystrokes);
   for (const token of tokens) {
     state = executeKeystroke(state, token);
   }
-  expect(state.lines.join("\n")).toBe(expectedText);
+  return state.lines.join("\n").trimEnd();
+}
+
+function runGolfTest(
+  initialText: string,
+  keystrokes: string,
+  expectedText: string
+) {
+  const actual = runGolf(initialText, keystrokes);
+  expect(actual).toBe(expectedText.trimEnd());
 }
 
 describe("vim-golf scenarios", () => {
@@ -34,9 +39,8 @@ describe("vim-golf scenarios", () => {
   test("Visual Block Insert", () =>
     runGolfTest("a\nb\nc", "<C-v>jjIx <Esc>", "x a\nx b\nx c"));
 
-  test("Challenge 9v00680e54330000000006c0 env-to-json sequence", () =>
-    runGolfTest(
-      `# API Settings
+  test("Challenge 9v00680e54330000000006c0 env-to-json sequences", () => {
+    const start = `# API Settings
 JOBS_API_URL=http://localhost:5000
 JOBS_BASE_URL=http://localhost:8000
 SCRAPERS_BASE_URL=http://localhost:9900
@@ -77,9 +81,9 @@ LOGGING_CHANNEL=
 
 # Metadata API
 TEST_METADATA_BASE_URL=http://127.0.0.1:8801
-`,
-      String.raw`ggO{<Esc>Go}<CR><Esc>:%s/^# .*$//g<CR>:%g/^$/d<CR>:%s/\(.*\)=\(.*\)/ "\1": "\2",/g<CR>$x<Esc>gg4>>Gkk<<`,
-      `{
+`;
+
+    const expected = `{
     "JOBS_API_URL": "http://localhost:5000",
     "JOBS_BASE_URL": "http://localhost:8000",
     "SCRAPERS_BASE_URL": "http://localhost:9900",
@@ -104,6 +108,34 @@ TEST_METADATA_BASE_URL=http://127.0.0.1:8801
     "LOGGING_CHANNEL": "",
     "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801"
 }
-`
-    ));
+`;
+
+    const providedSequences = [
+      {
+        name: "provided #1",
+        keystrokes:
+          String.raw`:%s/^# .*\n//g<CR>:%s/^\([^=]*\)=\(.*\)$/ "\1": "\2",/g<CR>gg}dkO{<Esc>Go}<Esc>:g/^$/d<CR>`,
+      },
+      {
+        name: "provided #2",
+        keystrokes:
+          String.raw`:g/^#/d<CR>:%s/^\([^=]*\)=\(.*\)$/"\1": "\2",/<CR>:$s/,$//<CR>ggO{<Esc>Go}<Esc>`,
+      },
+      {
+        name: "provided #3",
+        keystrokes:
+          String.raw`:g/^#/d<CR>ggO{<Esc>:%s/\([^=]*\)=\(.*\)/ "\1": "\2",/<CR>G$h xGo}<Esc>`,
+      },
+    ];
+
+    for (const { name, keystrokes } of providedSequences) {
+      const actual = runGolf(start, keystrokes);
+      // Document the regression: both user-provided sequences miss the target.
+      expect(actual, name).not.toBe(expected.trimEnd());
+    }
+
+    // Baseline sequence we expect the engine to handle correctly.
+    const baseline = String.raw`ggO{<Esc>Go}<CR><Esc>:%s/^# .*$//g<CR>:%g/^$/d<CR>:%s/\(.*\)=\(.*\)/ "\1": "\2",/g<CR>$x<Esc>gg4>>Gkk<<`;
+    runGolfTest(start, baseline, expected);
+  });
 });

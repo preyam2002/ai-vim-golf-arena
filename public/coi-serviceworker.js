@@ -1,3 +1,5 @@
+/* eslint-env worker, browser */
+/* global self, Request, fetch, Headers, Response, console, window, navigator */
 /*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
 let coepCredentialless = false;
 if (typeof window === 'undefined') {
@@ -107,7 +109,7 @@ if (typeof window === 'undefined') {
         }
 
         // If we're already coi: do nothing. Perhaps it's due to this script doing its job, or COOP/COEP are
-        // already set from the origin server. Also if the browser has no notion of crossOriginIsolated, just give up here.
+        // already set from the origin server. Also if the browser has no notion of crossOriginIsolated, just return here.
         if (window.crossOriginIsolated !== false || !coi.shouldRegister()) return;
 
         if (!window.isSecureContext) {

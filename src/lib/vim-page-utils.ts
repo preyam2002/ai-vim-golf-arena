@@ -16,3 +16,5 @@ export function cycleIndex(current: number, delta: number, length: number): numb
   return next;
 }
 
+
+

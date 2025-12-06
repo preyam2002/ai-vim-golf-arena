@@ -163,7 +163,9 @@ export function executeKeystrokeInternal(
     if (keystroke === "q") {
       // Stop recording and save macro
       newState.registers[newState.recordingMacro] = newState.macroBuffer;
-      newState.registerMetadata[newState.recordingMacro] = { isLinewise: false };
+      newState.registerMetadata[newState.recordingMacro] = {
+        isLinewise: false,
+      };
       newState.macroBuffer = "";
       newState.recordingMacro = null;
       return newState;
@@ -217,6 +219,7 @@ export function executeKeystrokeInternal(
     case "normal":
       return handleNormalModeKeystroke(newState, keystroke);
     case "insert":
+    case "replace":
       return handleInsertModeKeystroke(newState, keystroke);
     case "visual":
     case "visual-line":
@@ -234,11 +237,23 @@ export function executeKeystroke(state: VimState, keystroke: string): VimState {
   return executeKeystrokeInternal(state, keystroke);
 }
 
-export function tokenizeKeystrokes(keystrokes: string): string[] {
+export function tokenizeKeystrokes(
+  keystrokes: string,
+  maxTokens = Number.POSITIVE_INFINITY
+): string[] {
   const tokens: string[] = [];
   let i = 0;
 
   while (i < keystrokes.length) {
+    if (tokens.length >= maxTokens) break;
+
+    // Combine find/till motions with their target character (f,F,t,T)
+    if ("fFtT".includes(keystrokes[i]) && i + 1 < keystrokes.length) {
+      tokens.push(keystrokes.slice(i, i + 2));
+      i += 2;
+      continue;
+    }
+
     if (keystrokes[i] === "<") {
       const end = keystrokes.indexOf(">", i);
       if (end !== -1) {

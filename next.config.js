@@ -1,3 +1,5 @@
+/* eslint-env node */
+/* global module */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {

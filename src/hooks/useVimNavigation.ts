@@ -118,6 +118,9 @@ export function useVimNavigation() {
     highlightsRef.current = [];
     setMatches([]);
     setActiveMatch(-1);
+    setMatchHints([]);
+    setMatchHintsVisible(false);
+    setMatchHintBuffer("");
   }, []);
 
   const highlightQuery = useCallback(
@@ -129,6 +132,7 @@ export function useVimNavigation() {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       const textNodes: Text[] = [];
       const found: HTMLElement[] = [];
+      const foundForHints: HTMLElement[] = [];
       const limit = 120;
 
       const shouldSkip = (node: Node | null) => {
@@ -163,6 +167,7 @@ export function useVimNavigation() {
           mark.textContent = match[0];
           frag.appendChild(mark);
           found.push(mark);
+          foundForHints.push(mark);
           replaced = true;
           lastIndex = match.index + match[0].length;
         }
@@ -179,8 +184,25 @@ export function useVimNavigation() {
       if (found.length > 0) {
         setActiveMatch(0);
         scrollIntoViewCentered(found[0]);
+        const keys = generateHintKeys(foundForHints.length);
+        const hints = foundForHints.map((el, idx) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            key: keys[idx],
+            x: rect.left + window.scrollX,
+            y: rect.top + window.scrollY,
+            target: el,
+          };
+        });
+        matchHintsRef.current = hints;
+        setMatchHints(hints);
+        setMatchHintsVisible(true);
+        setMatchHintBuffer("");
       } else {
         setActiveMatch(-1);
+        setMatchHintsVisible(false);
+        setMatchHints([]);
+        matchHintsRef.current = [];
       }
     },
     [clearHighlights]
@@ -193,6 +215,8 @@ export function useVimNavigation() {
   }, []);
 
   const openHints = useCallback(() => {
+    setMatchHintsVisible(false);
+    setMatchHintBuffer("");
     const candidates = Array.from(
       document.querySelectorAll<HTMLElement>(CLICKABLE_SELECTOR)
     ).filter((el) => isVisible(el));
@@ -300,26 +324,12 @@ export function useVimNavigation() {
     scrollIntoViewCentered(target);
   }, []);
 
-  const flashRange = useCallback((range: Range) => {
-    const mark = document.createElement("mark");
-    mark.className = "vim-sneak-highlight";
-    range.surroundContents(mark);
-    window.setTimeout(() => {
-      const parent = mark.parentElement;
-      const text = mark.textContent || "";
-      if (parent) {
-        parent.replaceChild(document.createTextNode(text), mark);
-        parent.normalize();
-      }
-    }, 900);
-  }, []);
-
   const applySneak = useCallback(
     (pattern: string, count: number) => {
       if (!pattern || pattern.length < 2) return;
       const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      const ranges: Range[] = [];
+      const marks: HTMLElement[] = [];
       const limit = 60;
 
       const shouldSkip = (node: Node | null) => {
@@ -328,7 +338,7 @@ export function useVimNavigation() {
       };
 
       let node = walker.nextNode();
-      while (node && ranges.length < limit) {
+      while (node && marks.length < limit) {
         if (shouldSkip(node.parentElement)) {
           node = walker.nextNode();
           continue;
@@ -336,19 +346,36 @@ export function useVimNavigation() {
         const text = node.nodeValue || "";
         regex.lastIndex = 0;
         let match: RegExpExecArray | null;
-        while ((match = regex.exec(text)) && ranges.length < limit) {
-          const range = document.createRange();
-          range.setStart(node, match.index);
-          range.setEnd(node, match.index + pattern.length);
-          ranges.push(range);
+        let lastIndex = 0;
+        let replaced = false;
+        const frag = document.createDocumentFragment();
+
+        while ((match = regex.exec(text)) && marks.length < limit) {
+          const before = text.slice(lastIndex, match.index);
+          if (before) frag.appendChild(document.createTextNode(before));
+          const mark = document.createElement("mark");
+          mark.className = "vim-sneak-highlight";
+          mark.textContent = match[0];
+          frag.appendChild(mark);
+          marks.push(mark);
+          lastIndex = match.index + match[0].length;
+          replaced = true;
+        }
+
+        if (replaced) {
+          const after = text.slice(lastIndex);
+          if (after) frag.appendChild(document.createTextNode(after));
+          node.parentElement?.replaceChild(frag, node);
         }
         node = walker.nextNode();
       }
 
-      if (!ranges.length) return;
-      const idx = Math.min(ranges.length - 1, count - 1);
-      const targetRange = ranges[idx];
-      const rect = targetRange.getBoundingClientRect();
+      if (!marks.length) return;
+      highlightsRef.current = marks;
+      setMatches(marks);
+      const idx = Math.min(marks.length - 1, count - 1);
+      const target = marks[idx];
+      const rect = target.getBoundingClientRect();
       const top = rect.top + window.scrollY;
       const left = rect.left + window.scrollX;
       window.scrollTo({
@@ -356,9 +383,22 @@ export function useVimNavigation() {
         left: left,
         behavior: "smooth",
       });
-      flashRange(targetRange);
+      const keys = generateHintKeys(marks.length);
+      const hints = marks.map((el, i) => {
+        const r = el.getBoundingClientRect();
+        return {
+          key: keys[i],
+          x: r.left + window.scrollX,
+          y: r.top + window.scrollY,
+          target: el,
+        };
+      });
+      matchHintsRef.current = hints;
+      setMatchHints(hints);
+      setMatchHintsVisible(true);
+      setMatchHintBuffer("");
     },
-    [flashRange]
+    []
   );
 
   const handleKeydown = useCallback(
@@ -366,7 +406,17 @@ export function useVimNavigation() {
       if (event.defaultPrevented) return;
       if (event.metaKey) return;
 
-      if (isTypingTarget(event.target)) return;
+      if (isTypingTarget(event.target)) {
+        if (event.key === "Escape") {
+          (event.target as HTMLElement | null)?.blur();
+          resetGPending();
+          setSneakArmed(false);
+          setSneakBuffer("");
+          prefixRef.current = "";
+          return;
+        }
+        return;
+      }
 
       if (sneakArmed) {
         if (event.key === "Escape") {
@@ -412,6 +462,30 @@ export function useVimNavigation() {
         }
       }
 
+      if (matchHintsVisible) {
+        if (event.key === "Escape") {
+          setMatchHintsVisible(false);
+          setMatchHintBuffer("");
+          return;
+        }
+        if (/^[a-z0-9]$/i.test(event.key)) {
+          const next = (matchHintBuffer + event.key.toLowerCase()).slice(0, 3);
+          setMatchHintBuffer(next);
+          const possible = matchHintsRef.current.filter((h) => h.key.startsWith(next));
+          if (possible.length === 1 && possible[0].key === next) {
+            event.preventDefault();
+            const hint = possible[0];
+            const idx = matchHintsRef.current.findIndex((h) => h.key === hint.key);
+            setActiveMatch(idx);
+            hint.target.scrollIntoView({ behavior: "smooth", block: "center" });
+            setMatchHintBuffer("");
+          } else if (possible.length === 0) {
+            setMatchHintBuffer("");
+          }
+          return;
+        }
+      }
+
       if (event.key === "Escape") {
         resetGPending();
         closeHints();
@@ -419,6 +493,9 @@ export function useVimNavigation() {
         clearHighlights();
         setSneakArmed(false);
         setSneakBuffer("");
+        setMatchHintsVisible(false);
+        setMatchHints([]);
+        setMatchHintBuffer("");
         prefixRef.current = "";
         return;
       }
@@ -444,6 +521,9 @@ export function useVimNavigation() {
         setSearchOpen(true);
         setSearchQuery("");
         resetGPending();
+        setMatchHintsVisible(false);
+        setMatchHints([]);
+        setMatchHintBuffer("");
         return;
       }
 
@@ -615,6 +695,9 @@ export function useVimNavigation() {
       searchQuery,
       matches,
       activeMatch,
+      matchHints,
+      matchHintBuffer,
+      matchHintsVisible,
       setSearchQuery,
       submitSearch,
       setSearchOpen,
@@ -625,6 +708,9 @@ export function useVimNavigation() {
       hints,
       hintsVisible,
       matches,
+      matchHintBuffer,
+      matchHints,
+      matchHintsVisible,
       searchOpen,
       searchQuery,
       submitSearch,

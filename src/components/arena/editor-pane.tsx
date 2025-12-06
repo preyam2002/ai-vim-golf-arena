@@ -28,11 +28,11 @@ export function EditorPane({
       <div className="flex-1 overflow-auto bg-black/60">
         <pre className="p-4 font-mono text-[13px] leading-relaxed">
           {lines.map((line, lineIdx) => (
-            <div key={lineIdx} className="flex">
-              <span className="mr-4 w-8 select-none text-right text-muted-foreground/70">
+            <div key={lineIdx} className="flex items-start leading-relaxed">
+              <span className="mr-4 w-10 shrink-0 select-none text-right tabular-nums text-muted-foreground/70">
                 {lineIdx + 1}
               </span>
-              <span className="flex-1">
+              <span className="flex-1 whitespace-pre">
                 {line.split("").map((char, colIdx) => {
                   const isCursor =
                     cursorLine === lineIdx && cursorCol === colIdx;

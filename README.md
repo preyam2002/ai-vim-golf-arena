@@ -1,4 +1,4 @@
-# AI Vim Golf Arena
+# Vimgolf AI Arena
 
 Watch AI models compete to solve Vim Golf challenges with the fewest keystrokes.
 
@@ -36,6 +36,13 @@ npm install
 | AI_GATEWAY_URL     | AI Gateway endpoint URL              |
 | AI_GATEWAY_API_KEY | API key for AI Gateway authorization |
 
+Example (Vercel AI Gateway, OpenAI-compatible):
+
+```
+AI_GATEWAY_URL=https://gateway.ai.vercel.com/api/v1
+AI_GATEWAY_API_KEY=your_gateway_key
+```
+
 3. Run the development server:
 
 \`\`\`bash
@@ -61,11 +68,11 @@ Request body:
 
 \`\`\`json
 {
-  "challengeId": "string",
-  "startText": "string",
-  "targetText": "string",
-  "modelIds": ["string"],
-  "bestHumanScore": 10
+"challengeId": "string",
+"startText": "string",
+"targetText": "string",
+"modelIds": ["string"],
+"bestHumanScore": 10
 }
 \`\`\`
 

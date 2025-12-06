@@ -23,27 +23,17 @@ const mono = IBM_Plex_Mono({
   variable: "--font-mono",
 });
 
+const sharedIcon = "/icon.svg";
+
 export const metadata: Metadata = {
-  title: "AI Vim Golf Arena",
+  title: "Vimgolf AI Arena",
   description:
     "Watch AI models compete to solve Vim Golf challenges with the fewest keystrokes",
   generator: "v0.app",
   icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
+    icon: sharedIcon,
+    shortcut: sharedIcon,
+    apple: sharedIcon,
   },
 };
 

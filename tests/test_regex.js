@@ -1,3 +1,6 @@
+/* eslint-env node */
+/* global console */
+
 // Direct JS regex test
 const text = `JOBS_API_URL=http://localhost:5000
 JOBS_BASE_URL=http://localhost:8000

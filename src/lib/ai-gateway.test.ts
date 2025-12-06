@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanKeystrokes } from "./ai-gateway";
+import { cleanKeystrokes, extractGatewayContent } from "./ai-gateway";
 
 describe("cleanKeystrokes", () => {
   it("should handle plain text", () => {
@@ -29,5 +29,28 @@ describe("cleanKeystrokes", () => {
   it("should handle text surrounded by commentary", () => {
     const input = "Here is the solution:\n```\ncwfoo<Esc>\n```\nHope it helps!";
     expect(cleanKeystrokes(input)).toBe("cwfoo<Esc>");
+  });
+});
+
+describe("extractGatewayContent", () => {
+  it("should join array text parts", () => {
+    const content = [
+      { type: "text", text: "cw" },
+      { type: "text", text: "foo" },
+      { type: "text", text: "<Esc>" },
+    ];
+    expect(extractGatewayContent(content)).toBe("cwfoo<Esc>");
+  });
+
+  it("should handle nested parts content", () => {
+    const content = {
+      parts: [{ text: "gg" }, { text: "dG" }],
+    };
+    expect(extractGatewayContent(content)).toBe("ggdG");
+  });
+
+  it("should fall back to content field", () => {
+    const content = { content: ":%s/a/b/g<CR>" };
+    expect(extractGatewayContent(content)).toBe(":%s/a/b/g<CR>");
   });
 });

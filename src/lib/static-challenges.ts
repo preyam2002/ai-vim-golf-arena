@@ -1,4 +1,4 @@
-import type { Challenge } from "./types"
+import type { Challenge } from "./types";
 
 export const staticChallenges: Challenge[] = [
   {
@@ -7,7 +7,7 @@ export const staticChallenges: Challenge[] = [
     description: "Add a number to each line",
     startText: "apple\nbanana\ncherry",
     targetText: "1. apple\n2. banana\n3. cherry",
-    bestHumanScore: 15,
+    bestHumanScore: 14,
   },
   {
     id: "static-2",
@@ -23,7 +23,7 @@ export const staticChallenges: Challenge[] = [
     description: "Remove duplicate lines",
     startText: "one\ntwo\ntwo\nthree\nthree\nthree",
     targetText: "one\ntwo\nthree",
-    bestHumanScore: 12,
+    bestHumanScore: 8,
   },
   {
     id: "static-4",
@@ -31,7 +31,7 @@ export const staticChallenges: Challenge[] = [
     description: "Convert all text to uppercase",
     startText: "hello world\nthis is vim golf",
     targetText: "HELLO WORLD\nTHIS IS VIM GOLF",
-    bestHumanScore: 10,
+    bestHumanScore: 5,
   },
   {
     id: "static-5",
@@ -39,7 +39,7 @@ export const staticChallenges: Challenge[] = [
     description: "Wrap each word in quotes",
     startText: "apple banana cherry",
     targetText: '"apple" "banana" "cherry"',
-    bestHumanScore: 18,
+    bestHumanScore: 15,
   },
   {
     id: "static-6",
@@ -55,7 +55,7 @@ export const staticChallenges: Challenge[] = [
     description: "Remove all empty lines",
     startText: "line1\n\nline2\n\n\nline3",
     targetText: "line1\nline2\nline3",
-    bestHumanScore: 10,
+    bestHumanScore: 8,
   },
   {
     id: "static-8",
@@ -65,13 +65,29 @@ export const staticChallenges: Challenge[] = [
     targetText: "let x = 1;\nlet y = 2;\nlet z = 3;",
     bestHumanScore: 9,
   },
-]
+  {
+    id: "static-9",
+    title: "Trim Spaces",
+    description: "Remove trailing spaces from every line",
+    startText: "alpha  \nbeta   \ngamma    \ndelta",
+    targetText: "alpha\nbeta\ngamma\ndelta",
+    bestHumanScore: 13,
+  },
+  {
+    id: "static-10",
+    title: "Join Lines",
+    description: "Combine lines into a single comma-separated line",
+    startText: "red\ngreen\nblue\nyellow",
+    targetText: "red, green, blue, yellow",
+    bestHumanScore: 12,
+  },
+];
 
 export function getRandomChallenge(): Challenge {
-  const index = Math.floor(Math.random() * staticChallenges.length)
-  return staticChallenges[index]
+  const index = Math.floor(Math.random() * staticChallenges.length);
+  return staticChallenges[index];
 }
 
 export function getChallengeById(id: string): Challenge | undefined {
-  return staticChallenges.find((c) => c.id === id)
+  return staticChallenges.find((c) => c.id === id);
 }

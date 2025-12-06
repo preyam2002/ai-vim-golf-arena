@@ -61,6 +61,7 @@ export interface VimState {
     col: number;
     insertStartIndex: number;
     append: boolean;
+    usedB?: boolean;
   } | null;
   visualBlockWaitingInsert: boolean;
   visualBlockInsertBuffer: string;
@@ -81,6 +82,7 @@ export interface HistoryEntry {
 
 export interface LastChange {
   keys: string[];
+  isChange?: boolean;
   count?: number;
 }
 

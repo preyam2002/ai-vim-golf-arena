@@ -1,3 +1,6 @@
+/* eslint-env node */
+/* global console */
+
 // Test backreference conversion
 const vimReplacement = " \"\\1\": \"\\2\",";
 console.log("Vim replacement:", vimReplacement);
