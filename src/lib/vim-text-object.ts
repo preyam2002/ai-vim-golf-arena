@@ -416,9 +416,14 @@ export function getTextObject(
               closeEnd: end,
             };
             if (cursorIdx >= open.start && cursorIdx <= end) {
-              // prefer the outermost enclosing tag; we'll refine selection
-              // later based on cursor position.
-              if (!best || pair.openStart < best.openStart) {
+              // Prefer the smallest enclosing tag (innermost) so nested tags
+              // like <div><i>...</i></div> pick the inner tag first.
+              if (
+                !best ||
+                end - start < best.closeEnd - best.openStart ||
+                (end - start === best.closeEnd - best.openStart &&
+                  start > best.openStart)
+              ) {
                 best = pair;
               }
             }
@@ -436,18 +441,18 @@ export function getTextObject(
       let endIdx = modifier === "i" ? innerEnd : best.closeEnd;
 
       if (modifier === "i") {
-        // Prefer deleting the content of the first nested tag instead of
-        // removing the tag itself so constructs like <a><b>text</b></a> keep
-        // their child tags intact.
+        // Prefer deleting the content of the child tag that contains the
+        // cursor. If none contain the cursor, fall back to the first child
+        // (preserves child tags instead of stripping the parent).
         const innerRe = /<\/?([a-zA-Z0-9\-]+)[^>]*>/g;
         innerRe.lastIndex = innerStart;
         const innerStack: { name: string; start: number; end: number }[] = [];
-        let child: {
+        const children: {
           openStart: number;
           openEnd: number;
           closeStart: number;
           closeEnd: number;
-        } | null = null;
+        }[] = [];
 
         let innerMatch: RegExpExecArray | null;
         while (
@@ -467,36 +472,40 @@ export function getTextObject(
               if (innerStack[i].name === name) {
                 const open = innerStack[i];
                 innerStack.splice(i, innerStack.length - i);
-                child = {
+                children.push({
                   openStart: open.start,
                   openEnd: open.end,
                   closeStart: start,
                   closeEnd: end,
-                };
+                });
                 break;
               }
             }
-            if (child) break;
           }
         }
 
         const cursorInContent =
           cursorIdx > best.openEnd && cursorIdx < best.closeStart;
 
-        if (child) {
-          const cursorInsideChild =
-            (cursorIdx >= child.openStart && cursorIdx <= child.openEnd) ||
-            (cursorIdx > child.openEnd && cursorIdx < child.closeStart);
+        if (children.length > 0) {
+          const containingChild = children
+            .filter(
+              (c) =>
+                (cursorIdx > c.openEnd && cursorIdx < c.closeStart) || // inside content
+                (cursorIdx >= c.openStart && cursorIdx <= c.openEnd) // on opening tag
+            )
+            .sort(
+              (a, b) => a.closeEnd - a.openStart - (b.closeEnd - b.openStart)
+            )[0];
 
-          if (!cursorInContent || cursorInsideChild) {
-            startIdx = child.openEnd + 1;
-            endIdx = child.closeStart - 1;
+          const chosen =
+            containingChild || (!cursorInContent ? children[0] : null);
+
+          if (chosen) {
+            startIdx = chosen.openEnd + 1;
+            endIdx = chosen.closeStart - 1;
           }
         }
-      }
-
-      if (text.includes("<div><b>bold</b><i>italic</i></div>")) {
-        console.error("tag-range-2", { startIdx, endIdx, cursorIdx, modifier });
       }
 
       const startPos = toLineCol(Math.max(0, startIdx));

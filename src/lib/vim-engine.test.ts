@@ -137,6 +137,13 @@ describe("vim-engine", () => {
   test("Expression with Double Quotes", () =>
     runTest("a\nb", ':%s/^/\\=line(".").". "/<CR>', "1. a\n2. b"));
 
+  test("Multi-digit backreference in :s replacement", () =>
+    runTest(
+      "abcdefghij",
+      ":%s/\\v(.)(.)(.)(.)(.)(.)(.)(.)(.)(.)/\\10\\9\\8\\7\\6\\5\\4\\3\\2\\1/<CR>",
+      "jihgfedcba"
+    ));
+
   test("Normal range with expression register", () =>
     runTest(
       "a\nb\nc",

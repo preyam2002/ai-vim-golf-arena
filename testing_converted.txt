@@ -1,0 +1,34 @@
+{
+    "JOBS_API_URL": "http://localhost:5000",
+    "JOBS_BASE_URL": "http://localhost:8000",
+    "SCRAPERS_BASE_URL": "http://localhost:9900",
+
+    "JOBS_DATABASE_URI": "mongodb://mongouser:mongopassword@127.0.0.1:27017/app",
+
+    "JOBS_REDIS_DSN": "redis://127.0.0.1:6000",
+
+    "DATA_BASE_URL": "http://127.0.0.1:8900",
+
+    "JOBS_MINIO_SECURE": "false",
+    "JOBS_MINIO_ACCESS_KEY": "miniouser",
+    "JOBS_MINIO_SECRET_KEY": "miniosecret",
+    "JOBS_MINIO_HOST": "127.0.0.1:9500",
+    "JOBS_MINIO_DEFAULT_BUCKET": "jobs",
+    "JOBS_MINIO_REGION": "us-west-1",
+    "JOBS_MINIO_CREATE_BUCKETS": "false",
+    "JOBS_MINIO_RESULTS_FORMAT": "results/{job.id}.json",
+    "JOBS_MINIO_ARGUMENTS_FORMAT": "arguments/{job.id}.json",
+    "JOBS_MINIO_SERVICES_PATH": "services/{job.service.bucket_name}",
+    "JOBS_MINIO_LOGS_BUCKET": "",
+
+    "JOBS_RABBITMQ_URI": "amqp://rabbitmquser:rabbitmqpassword@127.0.0.1:5672",
+
+    "REGISTRY_TOKEN": "g_dka000111222333444",
+
+    "LOG_FORMAT": "text",
+
+    "SLACK_TOKEN": "",
+    "LOGGING_CHANNEL": "",
+
+    "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801"
+}

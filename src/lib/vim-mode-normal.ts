@@ -1242,6 +1242,7 @@ export function handleNormalModeKeystroke(
       case "h":
         state.cursorCol = Math.max(0, state.cursorCol - 1);
         break;
+      case " ":
       case "l":
         state.cursorCol = Math.min(
           (state.lines[state.cursorLine]?.length || 1) - 1,
@@ -1547,6 +1548,23 @@ export function handleNormalModeKeystroke(
       }
       case "x": {
         saveUndo(state);
+        const line = state.lines[state.cursorLine] ?? "";
+        const atLineEnd = state.cursorCol >= Math.max(0, line.length - 1);
+        const hasNextLine = state.cursorLine < state.lines.length - 1;
+
+        // In Vim, hitting x at end-of-line deletes the newline (joins lines).
+        if (atLineEnd && hasNextLine) {
+          const deletedText = "\n";
+          state.lines[state.cursorLine] =
+            line + (state.lines[state.cursorLine + 1] ?? "");
+          state.lines.splice(state.cursorLine + 1, 1);
+          if (saveDeleteRegister) {
+            saveDeleteRegister(state, deletedText, undefined, false);
+          }
+          clampCursor(state);
+          break;
+        }
+
         deleteRange(
           state,
           state.cursorLine,

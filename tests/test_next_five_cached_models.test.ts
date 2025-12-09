@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import db from "../data/db.json";
+import fs from "fs";
+import path from "path";
 import { listOfflineChallenges } from "../src/lib/offline-library";
 import {
   createInitialState,
@@ -10,6 +11,9 @@ import {
 import type { RunResult } from "../src/lib/types";
 
 // Challenges 6-10 from the offline list
+const db = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../data/db.json"), "utf-8")
+);
 const nextFive = listOfflineChallenges(10).slice(5, 10);
 const challengeById = new Map(nextFive.map((c) => [c.id, c]));
 const MAX_TOKENS = 200_000;
@@ -53,8 +57,7 @@ describe("cached solutions for next five challenges", () => {
             );
 
             expect(success).toBe(expectedSuccess);
-          },
-          { timeout: MAX_TEST_TIMEOUT_MS }
+          }
         );
       }
     });

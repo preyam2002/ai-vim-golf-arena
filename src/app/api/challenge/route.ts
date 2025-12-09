@@ -1,5 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchChallenge, getAllStaticChallenges } from "@/lib/challenge-source";
+import { availableModels } from "@/lib/ai-gateway";
+import { getOfflineSolution } from "@/lib/offline-library";
+
+async function getCacheStatus(challengeId: string) {
+  try {
+    // eslint-disable-next-line import/extensions
+    const { store } = await import("@/lib/store");
+    const missingModelIds: string[] = [];
+
+    for (const { id: modelId } of availableModels) {
+      const offline = getOfflineSolution(challengeId, modelId);
+      const stored =
+        store?.getResult && challengeId
+          ? await store.getResult(challengeId, modelId)
+          : undefined;
+
+      if (!offline && !stored) {
+        missingModelIds.push(modelId);
+      }
+    }
+
+    return {
+      missingModelIds,
+      hasAllCached: missingModelIds.length === 0,
+    };
+  } catch (error) {
+    console.warn(
+      `[Challenge API] Failed to compute cache status for ${challengeId}`,
+      error
+    );
+    return {
+      missingModelIds: [],
+      hasAllCached: true,
+    };
+  }
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -61,7 +97,8 @@ export async function GET(request: NextRequest) {
     console.log(`[Challenge API] Fetching challenge: ${challengeId}`);
 
     const challenge = await fetchChallenge(challengeId);
-    return NextResponse.json({ challenge });
+    const cacheStatus = await getCacheStatus(challenge.id);
+    return NextResponse.json({ challenge, cacheStatus });
   } catch (error) {
     console.error("Error fetching challenge:", error);
     return NextResponse.json(

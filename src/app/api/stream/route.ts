@@ -233,6 +233,8 @@ Do not include markdown, quotes, explanations, or extra lines.`;
           if (persisted || !challengeId) return;
           persisted = true;
           const { store } = await import("@/lib/store");
+          const existing = await store.getResult(challengeId, modelId);
+          if (existing) return;
           await store.saveResult(challengeId, {
             modelId,
             modelName: model.name ?? modelId,

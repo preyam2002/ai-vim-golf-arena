@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { StreamingModelCard } from "./streaming-model-card";
 import { InteractiveModelCard } from "./interactive-model-card";
 import { Loader2, Play, RotateCcw, Square } from "lucide-react";
@@ -12,6 +12,8 @@ interface LiveArenaProps {
   modelNames: Record<string, string>;
   onResultsComplete: (results: RunResult[]) => void;
   apiKey?: string;
+  requiresApiKey?: boolean;
+  missingModelIds?: string[];
 }
 
 export function LiveArena({
@@ -20,6 +22,8 @@ export function LiveArena({
   modelNames,
   onResultsComplete,
   apiKey,
+  requiresApiKey = false,
+  missingModelIds = [],
 }: LiveArenaProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [runKey, setRunKey] = useState(0); // Used to reset/restart all cards
@@ -33,6 +37,11 @@ export function LiveArena({
     new Set()
   );
   const [abortedModels, setAbortedModels] = useState<Set<string>>(new Set());
+  const missingModelNames = useMemo(
+    () => missingModelIds.map((id) => modelNames[id] || id),
+    [missingModelIds, modelNames]
+  );
+  const apiKeyMissing = requiresApiKey && !apiKey;
 
   const getStatusRank = useCallback((result: RunResult) => {
     switch (result.status) {
@@ -110,10 +119,11 @@ export function LiveArena({
   }, [onResultsComplete]);
 
   const handleRun = useCallback(() => {
+    if (apiKeyMissing) return;
     resetState();
     setRunStartedAt(Date.now());
     setIsRunning(true);
-  }, [resetState]);
+  }, [apiKeyMissing, resetState]);
 
   const handleReset = useCallback(() => {
     setIsRunning(false);
@@ -157,14 +167,14 @@ export function LiveArena({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Controls bar */}
-      <div className="neon-card flex flex-col gap-4 rounded-2xl border border-white/10 bg-black/50 px-6 py-5 shadow-[0_30px_80px_-70px_var(--primary)] md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
+      <div className="neon-card flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/50 px-6 py-5 shadow-[0_30px_80px_-70px_var(--primary)] md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
           <div className="h-10 w-10 rounded-xl border border-white/10 bg-linear-to-br from-primary/20 to-accent/20 text-primary shadow-inner shadow-black/40" />
           <button
             onClick={handleRun}
-            disabled={isRunning || selectedModels.length === 0}
+            disabled={isRunning || selectedModels.length === 0 || apiKeyMissing}
             className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-primary to-emerald-400 px-6 py-2.5 font-semibold text-primary-foreground shadow-[0_15px_50px_-28px_var(--primary)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-18px_var(--primary)] disabled:translate-y-0 disabled:opacity-50"
           >
             {isRunning ? (
@@ -200,9 +210,18 @@ export function LiveArena({
               Abort all
             </button>
           )}
+          {requiresApiKey && (
+            <div className="text-[11px] font-medium text-amber-200">
+              {apiKeyMissing
+                ? "Enter your API key to generate uncached runs."
+                : `Using your API key for ${
+                    missingModelNames.length || "any"
+                  } uncached model(s).`}
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-4 md:gap-6">
-          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
             <span className="pl-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Replay speed
             </span>
@@ -228,7 +247,7 @@ export function LiveArena({
 
       {/* Live simulation grid */}
       <div
-        className={`grid gap-4 ${
+        className={`grid gap-2 ${
           selectedModels.length === 1
             ? "grid-cols-1"
             : selectedModels.length === 2

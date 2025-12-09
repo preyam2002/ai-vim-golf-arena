@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import db from "../data/db-first-five.json";
+import fs from "fs";
+import path from "path";
 import { listOfflineChallenges } from "../src/lib/offline-library";
 import {
   createInitialState,
@@ -9,6 +10,9 @@ import {
 } from "../src/lib/vim-engine";
 import type { RunResult } from "../src/lib/types";
 
+const db = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../data/db-first-five.json"), "utf-8")
+);
 const firstFive = listOfflineChallenges(5);
 const challengeById = new Map(firstFive.map((c) => [c.id, c]));
 const MAX_TOKENS = 100_000;
@@ -40,21 +44,16 @@ describe("cached solutions for first five challenges", () => {
 
     describe(`challenge ${challengeId} - ${challenge.title}`, () => {
       for (const [modelId, result] of Object.entries(modelResults)) {
-        test(
-          `model ${modelId}`,
-          { timeout: MAX_TEST_TIMEOUT_MS },
-          () => {
-            const expectedSuccess = result.success !== false;
-            const { success } = runWithEngine(
-              challenge.startText,
-              challenge.targetText,
-              result.keystrokes
-            );
+        test(`model ${modelId}`, { timeout: MAX_TEST_TIMEOUT_MS }, () => {
+          const expectedSuccess = result.success !== false;
+          const { success } = runWithEngine(
+            challenge.startText,
+            challenge.targetText,
+            result.keystrokes
+          );
 
-            expect(success).toBe(expectedSuccess);
-          },
-          { timeout: MAX_TEST_TIMEOUT_MS }
-        );
+          expect(success).toBe(expectedSuccess);
+        });
       }
     });
   }

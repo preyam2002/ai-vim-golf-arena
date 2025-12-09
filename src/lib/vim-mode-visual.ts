@@ -55,6 +55,24 @@ export function handleVisualModeKeystroke(
     return state;
   }
 
+  // Handle Visual filter command (!) by pre-filling range and switching to
+  // command-line mode so the ex-layer can execute the filter.
+  // When typing text in visual block mode we want "!" to behave like normal
+  // input rather than entering the filter command. Skip the filter path in that
+  // case so characters get appended across the selection.
+  if (keystroke === "!" && state.mode !== "visual-block") {
+    state.commandLine = "'<,'>!";
+    state.mode = "commandline";
+    state.pendingOperator = null;
+    return state;
+  }
+
+  // Count prefixes in visual modes (e.g., V9j).
+  if (/^[1-9]$/.test(keystroke) || (keystroke === "0" && state.countBuffer)) {
+    state.countBuffer += keystroke;
+    return state;
+  }
+
   // Handle pending find/till targets (f/F/t/T)
   if (
     state.pendingOperator &&
@@ -602,22 +620,31 @@ export function handleVisualModeKeystroke(
     return state;
   }
 
+  const count = Math.max(
+    1,
+    state.countBuffer ? parseInt(state.countBuffer, 10) : 1
+  );
+  state.countBuffer = "";
+
   switch (keystroke) {
     case "h":
-      state.cursorCol = Math.max(0, state.cursorCol - 1);
+      state.cursorCol = Math.max(0, state.cursorCol - count);
       break;
     case "l":
       state.cursorCol = Math.min(
         (state.lines[state.cursorLine]?.length || 1) - 1,
-        state.cursorCol + 1
+        state.cursorCol + count
       );
       break;
     case "j":
-      state.cursorLine = Math.min(state.lines.length - 1, state.cursorLine + 1);
+      state.cursorLine = Math.min(
+        state.lines.length - 1,
+        state.cursorLine + count
+      );
       clampCursor(state);
       break;
     case "k":
-      state.cursorLine = Math.max(0, state.cursorLine - 1);
+      state.cursorLine = Math.max(0, state.cursorLine - count);
       clampCursor(state);
       break;
     case "G":

@@ -97,6 +97,22 @@ function renderVimReplacement(
         out += applyCase("\\");
         continue;
       }
+
+      // Support multi-digit backreferences (e.g. \10, \21).
+      if (/\d/.test(next)) {
+        let j = i + 1;
+        let digits = "";
+        while (j < template.length && /\d/.test(template[j])) {
+          digits += template[j];
+          j++;
+        }
+        i = j - 1; // advance past all digits
+        const idx = Number(digits);
+        const val = idx === 0 ? match : groups[idx - 1] ?? "";
+        out += applyCase(val);
+        continue;
+      }
+
       i++;
       switch (next) {
         case "U":
@@ -129,13 +145,7 @@ function renderVimReplacement(
           out += applyCase("\\");
           continue;
         default: {
-          if (/\d/.test(next)) {
-            const idx = Number(next);
-            const val = idx === 0 ? match : groups[idx - 1] ?? "";
-            out += applyCase(val);
-          } else {
-            out += applyCase(next);
-          }
+          out += applyCase(next);
           continue;
         }
       }
@@ -326,6 +336,15 @@ function evaluateVimExpression(
         const sep = asString(args[1] ?? "");
         if (Array.isArray(list)) return list.join(sep);
         return asString(list ?? "");
+      }
+      case "line": {
+        const raw = asString(args[0] ?? ".");
+        if (raw === "." || raw === "") return context.line.toString();
+        const num = parseInt(raw, 10);
+        return Number.isFinite(num) ? num.toString() : context.line.toString();
+      }
+      case "pi": {
+        return PI_DIGITS;
       }
       default:
         return "";
@@ -714,6 +733,75 @@ export function executeExCommand(
     return state;
   }
 
+  // Filter command :[range]!{cmd}
+  const filterMatch = cmd.match(/^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?!\s*(.+)$/);
+  if (filterMatch) {
+    saveUndo(state);
+    const rangeStr = filterMatch[1];
+    const shellCmdRaw = filterMatch[2].trim();
+    const { start, end } = rangeStr
+      ? parseCommandRange(rangeStr, state)
+      : { start: state.cursorLine, end: state.cursorLine };
+    const selected = state.lines.slice(
+      Math.max(0, start),
+      Math.min(state.lines.length, end + 1)
+    );
+
+    const runBuiltInFilter = (
+      cmdText: string,
+      lines: string[]
+    ): string | null => {
+      let data = lines.join("\n");
+      const parts = cmdText.split("|").map((p) => p.trim());
+      for (const part of parts) {
+        if (part === "tac") {
+          data = data.split("\n").reverse().join("\n");
+          continue;
+        }
+        if (/^tr ['"]\\012['"] ,$/.test(part)) {
+          data = data.replace(/\n/g, ",");
+          if (data.endsWith(",")) data = data.slice(0, -1);
+          continue;
+        }
+        return null;
+      }
+      return data;
+    };
+
+    let output: string | null = runBuiltInFilter(shellCmdRaw, selected);
+    if (!output && helpers?.runShellCommand) {
+      try {
+        output = helpers.runShellCommand(shellCmdRaw) ?? "";
+      } catch (e) {
+        console.error("[VimEngine] :! filter command failed", e);
+        finishCommand(state);
+        return state;
+      }
+    }
+
+    if (output === null) {
+      console.warn(
+        "[VimEngine] :! command requested but no supported runner available"
+      );
+      finishCommand(state);
+      return state;
+    }
+
+    const outputLines = output.replace(/\r\n/g, "\n").split("\n");
+    const clampedStart = Math.max(0, start);
+    const clampedEnd = Math.min(state.lines.length - 1, end);
+    const deleteCount = Math.max(0, clampedEnd - clampedStart + 1);
+    state.lines.splice(clampedStart, deleteCount, ...outputLines);
+    state.cursorLine = Math.min(
+      clampedStart + outputLines.length - 1,
+      state.lines.length - 1
+    );
+    state.cursorCol = 0;
+    clampCursor(state);
+    finishCommand(state);
+    return state;
+  }
+
   // Delete command :[range]d
   const deleteMatch = cmd.match(/^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?d$/);
   if (deleteMatch) {
@@ -923,12 +1011,16 @@ export function executeExCommand(
     const replaceFn = isExpression
       ? null
       : buildVimReplacementFn(rawReplacement);
+    const replacementAddsNewline =
+      !isExpression &&
+      (rawReplacement.includes("\\r") || rawReplacement.includes("\\n"));
 
     const originalCursorLine = state.cursorLine;
     const originalCursorCol = state.cursorCol;
 
     try {
       const hasNewline = pattern.includes("\\n") || pattern.includes("\n");
+      const needsMultiline = hasNewline || replacementAddsNewline;
       const lineRegexFlags = (global ? "g" : "") + (caseInsensitive ? "i" : "");
       const multiRegexFlags =
         (global ? "g" : "") + "m" + (caseInsensitive ? "i" : "");
@@ -946,7 +1038,7 @@ export function executeExCommand(
       }
 
       const iterativeMultiline =
-        global && hasNewline && /\\[1-9]/.test(pattern);
+        global && needsMultiline && /\\[1-9]/.test(pattern);
 
       if (isExpression) {
         for (let i = startLine; i <= endLine; i++) {
@@ -963,7 +1055,7 @@ export function executeExCommand(
             }
           );
         }
-      } else if (hasNewline) {
+      } else if (needsMultiline) {
         const linesSubset = state.lines.slice(startLine, endLine + 1);
         const text = linesSubset.join("\n");
         let newText = text;

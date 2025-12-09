@@ -19,7 +19,10 @@
 tmp/
 output*.txt
 test_output*.txt
-data
+# keep small JSONs, ignore bulk data
+data/*
+!data/popular-challenges.json
+!data/challenge-solutions.json
 data/solutions-full/
 data/db_temp.json
 

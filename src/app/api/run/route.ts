@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
     const isDefault = challengeId ? isDefaultChallengeId(challengeId) : false;
     const persistResult = async (result: RunResult) => {
       if (!store || !challengeId) return;
+      const existing = await store.getResult(challengeId, result.modelId);
+      if (existing) return;
       await store.saveResult(challengeId, result);
     };
 

@@ -13,6 +13,13 @@ import { StatsPanel } from "@/components/challenge/stats-panel";
 import { LiveArena } from "@/components/arena/live-arena";
 import type { Challenge, RunResult } from "@/lib/types";
 import { availableModels } from "@/lib/ai-gateway";
+import {
+  createInitialState,
+  executeKeystroke,
+  extractKeystroke,
+  normalizeText,
+  countKeystrokes,
+} from "@/lib/vim-engine";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -21,10 +28,66 @@ const MODEL_NAMES: Record<string, string> = Object.fromEntries(
   availableModels.map((m) => [m.id, m.name])
 );
 
+type ChallengeResponse = {
+  challenge: Challenge;
+  cacheStatus?: {
+    missingModelIds: string[];
+    hasAllCached: boolean;
+  };
+};
+
 const isResultInProgress = (result?: RunResult) =>
   result?.status === "in-progress" ||
   result?.status === "verifying" ||
   result?.status === "pending";
+
+function replayKeystrokes(startText: string, keystrokes: string): string {
+  let state = createInitialState(startText);
+  let remaining = keystrokes ?? "";
+
+  while (remaining.length > 0) {
+    const stroke = extractKeystroke(remaining, state.mode);
+    if (!stroke) break;
+    state = executeKeystroke(state, stroke);
+    remaining = remaining.slice(stroke.length);
+  }
+
+  return state.lines.join("\n");
+}
+
+function evaluateResultWithReplay(
+  result: RunResult,
+  challenge?: Challenge | null,
+  startText?: string,
+  targetText?: string
+): RunResult {
+  if (!challenge || !startText || !targetText) return result;
+
+  try {
+    const hasFinalText = !!result.finalText && result.finalText.length > 0;
+    const computedFinalText = hasFinalText
+      ? result.finalText
+      : replayKeystrokes(startText, result.keystrokes ?? "");
+
+    const success =
+      normalizeText(computedFinalText) === normalizeText(targetText);
+
+    const computedKeystrokeCount =
+      typeof result.keystrokeCount === "number" && result.keystrokeCount > 0
+        ? result.keystrokeCount
+        : countKeystrokes(result.keystrokes ?? "");
+
+    return {
+      ...result,
+      finalText: computedFinalText,
+      success,
+      keystrokeCount: computedKeystrokeCount,
+    };
+  } catch (e) {
+    console.warn("[ChallengePage] Failed to replay result", e);
+    return result;
+  }
+}
 
 export default function ChallengePage() {
   const params = useParams();
@@ -67,12 +130,22 @@ export default function ChallengePage() {
     }
   }, [id, dataParam]);
 
-  const { data, isLoading } = useSWR<{ challenge: Challenge }>(
+  const { data, isLoading } = useSWR<ChallengeResponse>(
     id !== "custom" ? `/api/challenge?id=${id}` : null,
     fetcher
   );
 
   const challenge = id === "custom" ? customChallenge : data?.challenge;
+  const missingModelIds =
+    challenge?.id === "custom"
+      ? availableModels.map((m) => m.id)
+      : data?.cacheStatus?.missingModelIds ?? [];
+  const missingModelNames = missingModelIds.map(
+    (modelId) => MODEL_NAMES[modelId] || modelId
+  );
+  const shouldShowApiKeyInput =
+    (challenge?.id === "custom" ? true : missingModelIds.length > 0) &&
+    !!challenge;
 
   useEffect(() => {
     if (
@@ -85,33 +158,47 @@ export default function ChallengePage() {
     }
   }, [id, isLoading, challenge?.id, router]);
 
-  const handleResultsComplete = useCallback((newResults: RunResult[]) => {
-    const signature = JSON.stringify(
-      newResults.map((r) => ({
-        id: r.modelId,
-        status: r.status,
-        success: r.success,
-        timeMs: r.timeMs,
-        keystrokeCount: r.keystrokeCount,
-      }))
-    );
-    if (signature === lastResultsSignature.current) return;
-    lastResultsSignature.current = signature;
+  const handleResultsComplete = useCallback(
+    (newResults: RunResult[]) => {
+      const evaluatedResults = newResults.map((r) =>
+        evaluateResultWithReplay(
+          r,
+          challenge,
+          challenge?.startText,
+          challenge?.targetText
+        )
+      );
 
-    setResults(newResults);
-    setSelectedResult((prev) => {
-      if (newResults.length === 0) return null;
+      const signature = JSON.stringify(
+        evaluatedResults.map((r) => ({
+          id: r.modelId,
+          status: r.status,
+          success: r.success,
+          timeMs: r.timeMs,
+          keystrokeCount: r.keystrokeCount,
+        }))
+      );
+      if (signature === lastResultsSignature.current) return;
+      lastResultsSignature.current = signature;
 
-      const updatedPrev = prev
-        ? newResults.find((r) => r.modelId === prev.modelId)
-        : undefined;
-      if (updatedPrev) return updatedPrev;
+      setResults(evaluatedResults);
+      setSelectedResult((prev) => {
+        if (evaluatedResults.length === 0) return null;
 
-      const firstFinished = newResults.find((r) => !isResultInProgress(r));
+        const updatedPrev = prev
+          ? evaluatedResults.find((r) => r.modelId === prev.modelId)
+          : undefined;
+        if (updatedPrev) return updatedPrev;
 
-      return firstFinished ?? newResults[0];
-    });
-  }, []);
+        const firstFinished = evaluatedResults.find(
+          (r) => !isResultInProgress(r)
+        );
+
+        return firstFinished ?? evaluatedResults[0];
+      });
+    },
+    [challenge]
+  );
 
   if (id !== "custom" && isLoading) {
     return (
@@ -142,7 +229,6 @@ export default function ChallengePage() {
     );
   }
 
-  const shouldShowInput = id !== "daily";
   const playHref = `/challenge/${id}/play${
     id === "custom" && customChallenge
       ? `?data=${encodeURIComponent(
@@ -189,7 +275,7 @@ export default function ChallengePage() {
         )}
 
         {/* START and TARGET text */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2">
           <EditorPane
             title="START"
             content={challenge.startText}
@@ -203,7 +289,7 @@ export default function ChallengePage() {
         </div>
 
         {/* Model selector */}
-        <div className="mt-6">
+        <div className="mt-3">
           <ModelSelector
             selectedModels={selectedModels}
             onSelectionChange={setSelectedModels}
@@ -211,25 +297,38 @@ export default function ChallengePage() {
           />
         </div>
 
-        {/* {shouldShowInput && (
-          <div className="mt-6 rounded-lg border border-border bg-card p-4">
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              AI Gateway API Key (Required for custom/random challenges)
-            </label>
+        {shouldShowApiKeyInput && (
+          <div className="mt-3 rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <label className="block text-sm font-medium text-foreground">
+                Enter your AI Gateway API key
+              </label>
+              <span className="text-xs text-muted-foreground">
+                Used only when cached runs are missing; never stored.
+              </span>
+            </div>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
-              className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="mt-2 w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              This key is used to power the AI models. It is not stored.
-            </p>
+            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {challenge?.id === "custom" ? (
+                <p>API key is required to run custom challenges.</p>
+              ) : missingModelNames.length > 0 ? (
+                <p>
+                  No cached runs exist yet for {missingModelNames.join(", ")}.
+                  Provide a key to generate them.
+                </p>
+              ) : null}
+              <p>Your key stays in this session only.</p>
+            </div>
           </div>
-        )} */}
+        )}
 
-        <div className="mt-8">
+        <div className="mt-4">
           <h2 className="mb-4 text-lg font-semibold text-foreground">
             Live Simulation Arena
           </h2>
@@ -239,13 +338,15 @@ export default function ChallengePage() {
             modelNames={MODEL_NAMES}
             onResultsComplete={handleResultsComplete}
             apiKey={apiKey}
+            requiresApiKey={shouldShowApiKeyInput}
+            missingModelIds={missingModelIds}
           />
         </div>
 
         {/* Results section - shows after run completes */}
         {results.length > 0 && (
-          <div className="mt-8 grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
+          <div className="mt-4 space-y-3">
+            <div className="space-y-2">
               <Leaderboard
                 results={results}
                 bestHumanScore={challenge.bestHumanScore}
@@ -255,7 +356,7 @@ export default function ChallengePage() {
                 expectedText={challenge.targetText}
               />
 
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+              <div className="flex gap-2 overflow-x-auto pb-2">
                 {results.map((result) => (
                   <button
                     key={result.modelId}
@@ -272,9 +373,7 @@ export default function ChallengePage() {
               </div>
             </div>
 
-            <div>
-              <StatsPanel result={selectedResult} />
-            </div>
+            <StatsPanel result={selectedResult} />
           </div>
         )}
       </div>

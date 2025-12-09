@@ -161,6 +161,20 @@ export function executeKeystrokeInternal(
   keystroke: string
 ): VimState {
   let newState = JSON.parse(JSON.stringify(state));
+  const MAX_TEXT_CHARS = 2_000_000;
+  const ensureReasonableSize = () => {
+    // Guard against runaway substitutions/globals that explode buffer size.
+    let total = 0;
+    for (const line of newState.lines) {
+      total += line.length + 1; // include newline
+      if (total > MAX_TEXT_CHARS) break;
+    }
+    if (total > MAX_TEXT_CHARS) {
+      throw new Error(
+        `[VimEngine] Aborting: text exceeded ${MAX_TEXT_CHARS} characters`
+      );
+    }
+  };
   newState.commandBuffer.push(keystroke);
 
   // Record macros if active
@@ -181,10 +195,12 @@ export function executeKeystrokeInternal(
 
   // Handle Ex Commands (e.g. :%s/...<CR>)
   if (keystroke.startsWith(":") && keystroke.endsWith("<CR>")) {
-    return executeExCommand(newState, keystroke, {
+    const nextState = executeExCommand(newState, keystroke, {
       executeKeystroke,
       tokenizeKeystrokes,
     });
+    ensureReasonableSize();
+    return nextState;
   }
 
   // Handle Search Commands (e.g. /pattern<CR>) passed as a single token
@@ -258,18 +274,27 @@ export function executeKeystrokeInternal(
 
   switch (newState.mode) {
     case "normal":
-      return handleNormalModeKeystroke(newState, keystroke);
+      newState = handleNormalModeKeystroke(newState, keystroke);
+      ensureReasonableSize();
+      return newState;
     case "insert":
     case "replace":
-      return handleInsertModeKeystroke(newState, keystroke);
+      newState = handleInsertModeKeystroke(newState, keystroke);
+      ensureReasonableSize();
+      return newState;
     case "visual":
     case "visual-line":
     case "visual-block":
-      return handleVisualModeKeystroke(newState, keystroke);
+      newState = handleVisualModeKeystroke(newState, keystroke);
+      ensureReasonableSize();
+      return newState;
     case "commandline":
-      return handleCommandModeKeystroke(newState, keystroke);
+      newState = handleCommandModeKeystroke(newState, keystroke);
+      ensureReasonableSize();
+      return newState;
     default:
       console.warn(`Unknown mode: ${newState.mode}`);
+      ensureReasonableSize();
       return newState;
   }
 }

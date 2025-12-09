@@ -1,0 +1,38 @@
+{
+  "9v00680e54330000000006c0": {
+    "user/sequence-1": {
+      "modelId": "user/sequence-1",
+      "modelName": "Sequence 1",
+      "keystrokes": ":%s/^# .*\\n//g<CR>:%s/^\\([^=]*\\)=\\(.*\\)$/ \"\\1\": \"\\2\",/g<CR>gg}dkO{<Esc>Go}<Esc>:g/^$/d<CR>",
+      "keystrokeCount": 73,
+      "timeMs": 0,
+      "success": false,
+      "finalText": "",
+      "steps": [],
+      "diffFromBest": 0
+    },
+    "user/sequence-2": {
+      "modelId": "user/sequence-2",
+      "modelName": "Sequence 2",
+      "keystrokes": ":g/^#/d<CR>:%s/^\\([^=]*\\)=\\(.*\\)$/\"\\1\": \"\\2\",/<CR>:$s/,$//<CR>ggO{<Esc>Go}<Esc>",
+      "keystrokeCount": 62,
+      "timeMs": 0,
+      "success": false,
+      "finalText": "",
+      "steps": [],
+      "diffFromBest": 0
+    },
+    "user/sequence-3": {
+      "modelId": "user/sequence-3",
+      "modelName": "Sequence 3",
+      "keystrokes": ":g/^#/d<CR>ggO{<Esc>:%s/\\([^=]*\\)=\\(.*\\)/ \"\\1\": \"\\2\",/<CR>G$h xGo}<Esc>",
+      "keystrokeCount": 53,
+      "timeMs": 0,
+      "success": false,
+      "finalText": "",
+      "steps": [],
+      "diffFromBest": 0
+    }
+  }
+}
+

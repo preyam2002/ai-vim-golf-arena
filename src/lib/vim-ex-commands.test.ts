@@ -37,6 +37,14 @@ describe("vim ex command robustness", () => {
     expect(state.lines.join("\n")).toBe("(YMD): 2024/10/09");
   });
 
+  test("substitute supports multi-digit backreferences", () => {
+    const start = "abcdefghij";
+    const ks =
+      ":%s/\\v(\\w)(\\w)(\\w)(\\w)(\\w)(\\w)(\\w)(\\w)(\\w)(\\w)/\\10\\9\\8\\7\\6\\5\\4\\3\\2\\1/<CR>";
+    const state = runKeystrokes(start, ks);
+    expect(state.lines.join("\n")).toBe("jihgfedcba");
+  });
+
   test(":put=Pi() inserts digits and digraph inserts π", () => {
     const start = "fu! Pi()\nlet x=''";
     const state = runKeystrokes(start, "ggdG:put=Pi()<CR>o<C-K>p*<Esc>");
