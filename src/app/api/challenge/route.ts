@@ -1,15 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchChallenge, getAllStaticChallenges } from "@/lib/challenge-source";
 
-function shuffleArray<T>(items: T[]): T[] {
-  const arr = [...items];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get("id");
@@ -19,7 +10,7 @@ export async function GET(request: NextRequest) {
   const pageSizeParam = searchParams.get("pageSize") ?? limitParam;
 
   if (listAll === "true") {
-    const challenges = shuffleArray(getAllStaticChallenges());
+    const challenges = getAllStaticChallenges();
     const pageFromQuery = pageParam ? Number.parseInt(pageParam, 10) : 1;
     const requestedPage =
       Number.isFinite(pageFromQuery) && pageFromQuery > 0 ? pageFromQuery : 1;

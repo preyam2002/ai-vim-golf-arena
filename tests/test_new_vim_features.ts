@@ -99,6 +99,13 @@ runTest(
 // 4. Join (J)
 runTest("Join (J)", "line 1\nline 2", "J", "line 1 line 2");
 
+runTest(
+  "Join without space (gJ)",
+  "line1\n\nline2",
+  "j$gJ",
+  "line1\nline2"
+);
+
 // 5. Toggle Case (~)
 runTest(
   "Toggle Case (~)",

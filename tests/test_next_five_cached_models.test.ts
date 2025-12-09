@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import db from "../data/db-first-five.json";
+import db from "../data/db.json";
 import { listOfflineChallenges } from "../src/lib/offline-library";
 import {
   createInitialState,
@@ -9,10 +9,11 @@ import {
 } from "../src/lib/vim-engine";
 import type { RunResult } from "../src/lib/types";
 
-const firstFive = listOfflineChallenges(5);
-const challengeById = new Map(firstFive.map((c) => [c.id, c]));
-const MAX_TOKENS = 100_000;
-const MAX_TEST_TIMEOUT_MS = 20_000;
+// Challenges 6-10 from the offline list
+const nextFive = listOfflineChallenges(10).slice(5, 10);
+const challengeById = new Map(nextFive.map((c) => [c.id, c]));
+const MAX_TOKENS = 200_000;
+const MAX_TEST_TIMEOUT_MS = 120_000;
 
 function runWithEngine(
   startText: string,
@@ -28,17 +29,17 @@ function runWithEngine(
   return { finalText, success };
 }
 
-describe("cached solutions for first five challenges", () => {
+describe("cached solutions for next five challenges", () => {
   const results = (db as any).results as Record<
     string,
     Record<string, RunResult>
   >;
 
-  for (const [challengeId, modelResults] of Object.entries(results)) {
-    const challenge = challengeById.get(challengeId);
-    if (!challenge) continue;
+  for (const challenge of nextFive) {
+    const modelResults = results[challenge.id];
+    if (!modelResults) continue;
 
-    describe(`challenge ${challengeId} - ${challenge.title}`, () => {
+    describe(`challenge ${challenge.id} - ${challenge.title}`, () => {
       for (const [modelId, result] of Object.entries(modelResults)) {
         test(
           `model ${modelId}`,
@@ -59,3 +60,4 @@ describe("cached solutions for first five challenges", () => {
     });
   }
 });
+

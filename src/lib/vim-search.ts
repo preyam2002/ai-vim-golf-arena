@@ -10,12 +10,24 @@ export function performSearch(
 ): SearchMatch[] {
   const matches: SearchMatch[] = [];
 
+  const escapePattern = (text: string) =>
+    text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const buildRegex = (source: string, flags: string) => {
+    try {
+      return new RegExp(source, flags);
+    } catch (_e) {
+      // Fallback to literal match when the pattern is not a valid regex.
+      return new RegExp(escapePattern(source), flags);
+    }
+  };
+
   try {
     const shouldIgnoreCase =
       !!options?.ignorecase &&
       (!options?.smartcase || pattern.toLowerCase() === pattern);
     const flags = `g${shouldIgnoreCase ? "i" : ""}`;
-    const regex = new RegExp(pattern, flags);
+    const regex = buildRegex(pattern, flags);
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];

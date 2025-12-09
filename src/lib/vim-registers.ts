@@ -5,8 +5,11 @@ export function getRegister(state: VimState, register: string): string {
 export function getRegisterMetadata(
   state: VimState,
   register: string
-): { isLinewise: boolean } {
-  return state.registerMetadata?.[register] || { isLinewise: false };
+): { isLinewise: boolean; fromDelete?: boolean } {
+  return state.registerMetadata?.[register] || {
+    isLinewise: false,
+    fromDelete: false,
+  };
 }
 
 function ensureMetadata(state: VimState) {
@@ -19,11 +22,12 @@ function writeRegister(
   state: VimState,
   reg: string,
   text: string,
-  isLinewise: boolean
+  isLinewise: boolean,
+  fromDelete: boolean = false
 ) {
   state.registers[reg] = text;
   ensureMetadata(state);
-  state.registerMetadata[reg] = { isLinewise };
+  state.registerMetadata[reg] = { isLinewise, fromDelete };
 }
 
 function shiftNumberedRegisters(state: VimState) {
@@ -31,7 +35,10 @@ function shiftNumberedRegisters(state: VimState) {
     state.registers[i.toString()] = state.registers[(i - 1).toString()] || "";
     ensureMetadata(state);
     state.registerMetadata[i.toString()] =
-      state.registerMetadata[(i - 1).toString()] || { isLinewise: false };
+      state.registerMetadata[(i - 1).toString()] || {
+        isLinewise: false,
+        fromDelete: false,
+      };
   }
 }
 
@@ -45,13 +52,13 @@ export function saveYankRegister(
   state.activeRegister = null;
   if (reg === "_") return; // black hole
 
-  writeRegister(state, reg, text, isLinewise);
+  writeRegister(state, reg, text, isLinewise, false);
   if (reg !== '"') {
-    writeRegister(state, '"', text, isLinewise);
+    writeRegister(state, '"', text, isLinewise, false);
   }
 
   // Yank always updates register 0 unless explicitly black-holed
-  writeRegister(state, "0", text, isLinewise);
+  writeRegister(state, "0", text, isLinewise, false);
 }
 
 export function saveDeleteRegister(
@@ -60,8 +67,11 @@ export function saveDeleteRegister(
   register?: string,
   isLinewise: boolean = false
 ): void {
-  // Normalize linewise deletes that start on an empty line so repeated pastes
-  // don't multiply leading blanks.
+  const reg = register ?? state.activeRegister ?? '"';
+  state.activeRegister = null;
+  if (reg === "_") return; // black hole
+
+  // Normalize linewise deletes so subsequent pastes mirror Vim's newline handling.
   if (isLinewise) {
     if (text.startsWith("\n")) {
       text = text.slice(1);
@@ -70,21 +80,27 @@ export function saveDeleteRegister(
       text = `${text}\n`;
     }
   }
-  const reg = register || state.activeRegister || '"';
-  state.activeRegister = null;
-  if (reg === "_") return; // black hole
 
-  if (!register && reg === '"') {
-    // Default delete: shift numbered registers and write to "1
-    shiftNumberedRegisters(state);
-    writeRegister(state, "1", text, isLinewise);
-    writeRegister(state, '"', text, isLinewise);
-  } else {
-    writeRegister(state, reg, text, isLinewise);
-    if (reg !== '"') {
-      writeRegister(state, '"', text, isLinewise);
-    }
+  const crossesLine = isLinewise || text.includes("\n");
+
+  // Explicit register (including when activeRegister is set): write there and update unnamed.
+  if (register || reg !== '"') {
+    writeRegister(state, reg, text, isLinewise, true);
+    writeRegister(state, '"', text, isLinewise, true);
+    return;
   }
+
+  // Default delete with unnamed register:
+  // - Multi-line OR multi-char deletes (dw, d2w, etc.) populate numbered registers.
+  // - Truly small deletes (single character on one line) go to the small delete register "-".
+  const isSmallDelete = !crossesLine && text.length === 1;
+  if (!isSmallDelete) {
+    shiftNumberedRegisters(state);
+    writeRegister(state, "1", text, isLinewise, true);
+  } else {
+    writeRegister(state, "-", text, isLinewise, true);
+  }
+  writeRegister(state, '"', text, isLinewise, true);
 }
 
 export function saveToRegister(

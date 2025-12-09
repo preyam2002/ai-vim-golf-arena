@@ -64,4 +64,64 @@ describe("vim command coverage", () => {
     const out = run('say "hello" now', 'f"ci"bye<Esc>');
     expect(out).toBe('say "bye" now');
   });
+
+  test("sentence motion deletes to next sentence", () => {
+    const out = run("First. Second. Third.", "d)");
+    expect(out).toBe("Second. Third.");
+  });
+
+  test("change inner sentence", () => {
+    const out = run("First line. Second!", "cisBye.<Esc>");
+    expect(out).toBe("Bye.Second!");
+  });
+
+  test("format with gq$", () => {
+    const out = run("a    b   c", "gq$");
+    expect(out).toBe("a b c");
+  });
+
+  test("indent normalize with =", () => {
+    const out = run("a\n  b", "gg=G");
+    expect(out).toBe("a\nb");
+  });
+
+  test(":move reorders lines", () => {
+    const out = run("a\nb\nc", ":2move 0<CR>");
+    expect(out).toBe("b\na\nc");
+  });
+
+  test(":copy duplicates line", () => {
+    const out = run("a\nb\nc", ":1copy 3<CR>");
+    expect(out).toBe("a\nb\nc\na");
+  });
+
+  test(":sort unique", () => {
+    const out = run("c\nb\nc\na", ":%sort u<CR>");
+    expect(out).toBe("a\nb\nc");
+  });
+
+  test("insert <C-u> clears to line start", () => {
+    const out = run("abc", "i123<C-u>xyz<Esc>");
+    expect(out).toBe("xyzabc");
+  });
+
+  test("insert <C-w> deletes previous word", () => {
+    const out = run("foo", "A bar<C-w><Esc>");
+    expect(out).toBe("foo");
+  });
+
+  test("insert <C-t>/<C-d> adjusts indent", () => {
+    const out = run("foo", "I<C-t><C-t>bar<C-d><C-d><Esc>");
+    expect(out).toBe("barfoo");
+  });
+
+  test("undo tree g- restores previous change", () => {
+    const out = run("abc", "xg-");
+    expect(out).toBe("abc");
+  });
+
+  test("redo with g+", () => {
+    const out = run("abc", "xg-g+");
+    expect(out).toBe("bc");
+  });
 });

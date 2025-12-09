@@ -1,4 +1,9 @@
-import { isWordChar, isWhitespace } from "./vim-utils";
+import {
+  findSentenceStartBackward,
+  findSentenceStartForward,
+  isWordChar,
+  isWhitespace,
+} from "./vim-utils";
 
 export function getTextObject(
   lines: string[],
@@ -16,38 +21,120 @@ export function getTextObject(
 
   // Word objects
   if (object === "w" || object === "W") {
-    const isWord =
-      object === "w" ? isWordChar : (c: string) => !isWhitespace(c);
+    const lineLength = currentLine.length;
+    if (lineLength === 0) return null;
 
-    let start = col;
-    let end = col;
+    let anchor = Math.min(col, lineLength - 1);
 
-    // Find word boundaries
-    while (start > 0 && isWord(currentLine[start - 1])) start--;
-    while (end < currentLine.length && isWord(currentLine[end])) end++;
+    if (object === "w") {
+      // For 'w', we need to handle word chars, punctuation, and whitespace separately
+      const charType = (c: string) => {
+        if (isWhitespace(c)) return "space";
+        if (isWordChar(c)) return "word";
+        return "punct";
+      };
 
-    if (modifier === "a") {
-      // Include trailing whitespace
-      while (end < currentLine.length && isWhitespace(currentLine[end])) end++;
-      // If no trailing whitespace, include leading
-      if (
-        end === col ||
-        (end < currentLine.length && !isWhitespace(currentLine[end]))
-      ) {
-        while (start > 0 && isWhitespace(currentLine[start - 1])) start--;
+      const anchorType = charType(currentLine[anchor]);
+
+      // If on whitespace, find next non-whitespace
+      if (anchorType === "space") {
+        let forward = anchor;
+        while (
+          forward < lineLength &&
+          charType(currentLine[forward]) === "space"
+        )
+          forward++;
+        if (forward < lineLength) {
+          anchor = forward;
+        } else {
+          let backward = anchor - 1;
+          while (backward >= 0 && charType(currentLine[backward]) === "space")
+            backward--;
+          if (backward < 0) return null;
+          anchor = backward;
+        }
       }
-      // Ensure we capture exactly one trailing space if present (common for aw)
-      if (end < currentLine.length && isWhitespace(currentLine[end])) {
+
+      const currentType = charType(currentLine[anchor]);
+      let start = anchor;
+      let end = anchor;
+
+      // Find boundaries based on character type
+      while (start > 0 && charType(currentLine[start - 1]) === currentType)
+        start--;
+      while (
+        end < lineLength - 1 &&
+        charType(currentLine[end + 1]) === currentType
+      )
         end++;
-      }
-    }
 
-    return {
-      startLine: line,
-      startCol: start,
-      endLine: line,
-      endCol: Math.max(start, end - 1),
-    };
+      if (modifier === "a") {
+        // Include trailing whitespace when available; otherwise, include leading whitespace
+        let after = end + 1;
+        while (after < lineLength && isWhitespace(currentLine[after])) after++;
+        if (after > end + 1) {
+          end = after - 1;
+        } else if (start > 0) {
+          let before = start - 1;
+          while (before >= 0 && isWhitespace(currentLine[before])) before--;
+          start = before + 1;
+        }
+      }
+
+      return {
+        startLine: line,
+        startCol: start,
+        endLine: line,
+        endCol: Math.max(start, end),
+      };
+    } else {
+      // For 'W', treat all non-whitespace as a word
+      const isWord = (c: string) => !isWhitespace(c);
+      const isWordAt = (idx: number) =>
+        idx >= 0 && idx < lineLength && isWord(currentLine[idx]);
+
+      // If cursor is on whitespace, find next word
+      if (!isWordAt(anchor)) {
+        let forward = anchor;
+        while (forward < lineLength && !isWordAt(forward)) forward++;
+        if (forward < lineLength) {
+          anchor = forward;
+        } else {
+          let backward = anchor - 1;
+          while (backward >= 0 && !isWordAt(backward)) backward--;
+          if (backward < 0) return null;
+          anchor = backward;
+        }
+      }
+
+      let start = anchor;
+      let end = anchor;
+
+      // Find word boundaries
+      while (start > 0 && isWord(currentLine[start - 1])) start--;
+      while (end < lineLength - 1 && isWord(currentLine[end + 1])) end++;
+
+      if (modifier === "a") {
+        // Include trailing whitespace when available; otherwise, include leading
+        // whitespace to mirror Vim's aw/aW behavior.
+        let after = end + 1;
+        while (after < lineLength && isWhitespace(currentLine[after])) after++;
+        if (after > end + 1) {
+          end = after - 1;
+        } else if (start > 0) {
+          let before = start - 1;
+          while (before >= 0 && isWhitespace(currentLine[before])) before--;
+          start = before + 1;
+        }
+      }
+
+      return {
+        startLine: line,
+        startCol: start,
+        endLine: line,
+        endCol: Math.max(start, end),
+      };
+    }
   }
 
   // Quote objects
@@ -98,49 +185,94 @@ export function getTextObject(
 
   if (bracketPairs[object]) {
     const { open, close } = bracketPairs[object];
-    let openPos = -1,
-      closePos = -1;
+    let openLine = -1,
+      openCol = -1;
+    let closeLine = -1,
+      closeCol = -1;
     let depth = 0;
 
-    // Find opening bracket before or at cursor
-    for (let i = col; i >= 0; i--) {
-      if (currentLine[i] === close) depth++;
-      if (currentLine[i] === open) {
-        if (depth === 0) {
-          openPos = i;
-          break;
+    // Search backwards from cursor position for opening bracket
+    let searchLine = line;
+    let searchCol = col;
+
+    searchLoop: while (searchLine >= 0) {
+      const searchText = lines[searchLine];
+      const startCol = searchLine === line ? searchCol : searchText.length - 1;
+
+      for (let i = startCol; i >= 0; i--) {
+        if (searchText[i] === close) {
+          depth++;
+        } else if (searchText[i] === open) {
+          if (depth === 0) {
+            openLine = searchLine;
+            openCol = i;
+            break searchLoop;
+          }
+          depth--;
         }
-        depth--;
+      }
+      searchLine--;
+    }
+
+    // If we found an opening bracket, search forward for closing bracket
+    if (openLine !== -1) {
+      depth = 0;
+      searchLine = openLine;
+      searchCol = openCol + 1;
+
+      searchLoop2: while (searchLine < lines.length) {
+        const searchText = lines[searchLine];
+        const startCol = searchLine === openLine ? searchCol : 0;
+
+        for (let i = startCol; i < searchText.length; i++) {
+          if (searchText[i] === open) {
+            depth++;
+          } else if (searchText[i] === close) {
+            if (depth === 0) {
+              closeLine = searchLine;
+              closeCol = i;
+              break searchLoop2;
+            }
+            depth--;
+          }
+        }
+        searchLine++;
+        searchCol = 0;
       }
     }
 
-    // Find closing bracket after cursor
-    depth = 0;
-    for (let i = openPos + 1; i < currentLine.length; i++) {
-      if (currentLine[i] === open) depth++;
-      if (currentLine[i] === close) {
-        if (depth === 0) {
-          closePos = i;
-          break;
-        }
-        depth--;
-      }
-    }
-
-    if (openPos !== -1 && closePos !== -1) {
+    if (openLine !== -1 && closeLine !== -1) {
       if (modifier === "i") {
+        // Inner: exclude the brackets themselves
+        let startLine = openLine;
+        let startCol = openCol + 1;
+        let endLine = closeLine;
+        let endCol = closeCol - 1;
+
+        // Handle case where open and close are on same line
+        if (startLine === endLine && startCol > endCol) {
+          // Empty inner object
+          return {
+            startLine: startLine,
+            startCol: startCol,
+            endLine: endLine,
+            endCol: startCol - 1,
+          };
+        }
+
         return {
-          startLine: line,
-          startCol: openPos + 1,
-          endLine: line,
-          endCol: closePos - 1,
+          startLine: startLine,
+          startCol: startCol,
+          endLine: endLine,
+          endCol: endCol,
         };
       } else {
+        // Around: include the brackets
         return {
-          startLine: line,
-          startCol: openPos,
-          endLine: line,
-          endCol: closePos,
+          startLine: openLine,
+          startCol: openCol,
+          endLine: closeLine,
+          endCol: closeCol,
         };
       }
     }
@@ -176,169 +308,206 @@ export function getTextObject(
     };
   }
 
+  // Sentence object
+  if (object === "s") {
+    const start = findSentenceStartBackward(lines, line, col);
+    const endBoundary = findSentenceStartForward(lines, line, col);
+
+    let endLine =
+      endBoundary.line - (endBoundary.col === 0 ? 1 : 0) >= start.line
+        ? endBoundary.line - (endBoundary.col === 0 ? 1 : 0)
+        : start.line;
+    const endColCandidate =
+      endBoundary.col === 0
+        ? Math.max(0, (lines[endLine]?.length ?? 1) - 1)
+        : endBoundary.col - 1;
+
+    let startLine = start.line;
+    let startCol = start.col;
+    let endCol = Math.max(0, endColCandidate);
+
+    if (modifier === "a") {
+      // Include trailing whitespace up to start of next sentence
+      let l = endLine;
+      let c = endCol + 1;
+      while (l < lines.length) {
+        const text = lines[l] || "";
+        while (c < text.length && isWhitespace(text[c])) c++;
+        if (c < text.length) break;
+        l++;
+        c = 0;
+        if (text.trim() === "") break;
+      }
+      endLine = l === lines.length ? lines.length - 1 : l;
+      endCol =
+        l >= lines.length
+          ? Math.max(0, (lines[endLine]?.length || 1) - 1)
+          : Math.max(0, c - 1);
+    } else {
+      // Trim leading whitespace for "inner" sentence
+      while (
+        startCol < (lines[startLine]?.length ?? 0) &&
+        isWhitespace(lines[startLine][startCol])
+      ) {
+        startCol++;
+      }
+    }
+
+    return {
+      startLine,
+      startCol,
+      endLine,
+      endCol,
+    };
+  }
+
   // Tag object (t)
   if (object === "t") {
-    let currL = line;
-    let currC = col;
-    const stack: string[] = [];
+    const lineOffsets: number[] = [];
+    let acc = 0;
+    for (const l of lines) {
+      lineOffsets.push(acc);
+      acc += l.length + 1; // account for the newline separator
+    }
 
-    // Helper to extract tag name from tag string (e.g. "div class='...'" -> "div")
-    const getTagName = (content: string) => {
-      const match = content.match(/^([a-zA-Z0-9\-]+)/);
-      return match ? match[1] : "";
+    const toIndex = (l: number, c: number) => lineOffsets[l] + c;
+    const toLineCol = (idx: number) => {
+      let lineIdx = 0;
+      while (
+        lineIdx < lineOffsets.length - 1 &&
+        lineOffsets[lineIdx + 1] <= idx
+      ) {
+        lineIdx++;
+      }
+      return { line: lineIdx, col: idx - lineOffsets[lineIdx] };
     };
 
-    // Search backward for opening tag that encloses the cursor
-    while (currL >= 0) {
-      const lText = lines[currL];
-      // Find last < before current position
-      // We need to loop because there might be multiple tags on the line
-      let searchPos = currC;
+    const text = lines.join("\n");
+    const cursorIdx = toIndex(line, col);
 
-      // If we moved up a line, search from end of line
-      if (currL < line) {
-        searchPos = lText.length;
-      }
+    const tagRe = /<\/?([a-zA-Z0-9\-]+)[^>]*>/g;
+    const stack: { name: string; start: number; end: number }[] = [];
+    let best: {
+      openStart: number;
+      openEnd: number;
+      closeStart: number;
+      closeEnd: number;
+    } | null = null;
 
-      while (true) {
-        const openIdx = lText.lastIndexOf("<", searchPos - 1);
-        if (openIdx === -1) break;
+    let match: RegExpExecArray | null;
+    while ((match = tagRe.exec(text))) {
+      const full = match[0];
+      const name = match[1];
+      const isClosing = full[1] === "/";
+      const start = match.index;
+      const end = start + full.length - 1;
 
-        const closeIdx = lText.indexOf(">", openIdx);
-        if (closeIdx !== -1) {
-          // We found a tag: <...>
-          const fullTag = lText.slice(openIdx + 1, closeIdx);
-
-          if (fullTag.startsWith("/")) {
-            // Closing tag, e.g. /div
-            const tagName = getTagName(fullTag.slice(1));
-            if (tagName) stack.push(tagName);
-          } else if (!fullTag.endsWith("/")) {
-            // Opening tag (ignore self-closing like <br/>)
-            const tagName = getTagName(fullTag);
-            if (tagName) {
-              if (stack.length > 0 && stack[stack.length - 1] === tagName) {
-                // Matches a recently seen closing tag, so this is a nested/adjacent tag pair
-                stack.pop();
-              } else if (stack.length === 0) {
-                // Found a candidate opening tag and stack is empty!
-                // This means we are inside this tag (or after it, but we scan backwards so inside/after).
-                // Wait, if we are AFTER it (e.g. <b>bold</b> cursor), we would have seen </b> first and pushed to stack.
-                // So if stack is empty, we must be inside it?
-                // Example: <b>bold</b> cursor.
-                // Scan back: </b> -> push b. <b> -> pop b. Stack empty.
-                // Continue scan back...
-                // So if we pop, we continue.
-                // If we find <b> and stack is empty, it means we haven't seen its closing tag yet.
-                // So we are inside it.
-
-                // Now find the matching closing tag forward
-                const startLine = currL;
-                const startCol = openIdx;
-                const openTagLength = closeIdx - openIdx + 1; // <div...>
-
-                // Search forward for </tagName>
-                let fwdL = startLine;
-                let fwdC = startCol + openTagLength;
-                let depth = 0;
-                let foundClose = false;
-                let endLine = -1;
-                let endCol = -1;
-
-                while (fwdL < lines.length) {
-                  const fText = lines[fwdL];
-                  const fStart = fwdL === startLine ? fwdC : 0;
-
-                  // Find next <
-                  const nextOpen = fText.indexOf("<", fStart);
-                  if (nextOpen !== -1) {
-                    const nextClose = fText.indexOf(">", nextOpen);
-                    if (nextClose !== -1) {
-                      const fTag = fText.slice(nextOpen + 1, nextClose);
-                      if (fTag.startsWith("/")) {
-                        const fTagName = getTagName(fTag.slice(1));
-                        if (fTagName === tagName) {
-                          if (depth === 0) {
-                            foundClose = true;
-                            endLine = fwdL;
-                            endCol = nextClose;
-                            break;
-                          } else {
-                            depth--;
-                          }
-                        }
-                      } else if (!fTag.endsWith("/")) {
-                        const fTagName = getTagName(fTag);
-                        if (fTagName === tagName) {
-                          depth++;
-                        }
-                      }
-                      // Continue searching on this line after the tag
-                      fwdC = nextClose + 1;
-                      continue;
-                    }
-                  }
-
-                  // If no more tags on this line, go to next line
-                  fwdL++;
-                  fwdC = 0;
-                }
-
-                if (foundClose) {
-                  // We found the pair!
-                  // Check if cursor is strictly inside?
-                  // Actually, if we found the opening tag by scanning backward and stack was empty,
-                  // and we found the closing tag forward, we are definitely inside (or on the tags).
-
-                  if (modifier === "i") {
-                    // Inner tag: exclude the tags themselves
-                    // Start: after opening tag
-                    // End: before closing tag
-
-                    // Handle case where content starts on same line or next
-                    let innerStartLine = startLine;
-                    let innerStartCol = startCol + openTagLength;
-                    let innerEndLine = endLine;
-                    let innerEndCol = endCol - (tagName.length + 3) + 1; // </tag> length is tagName + 3 (< / >)
-                    // Wait, endCol is index of >.
-                    // Closing tag starts at endCol - (tagName.length + 2).
-                    // </div > ? No, </div>. Length 3+3=6.
-                    // Index of < is endCol - (length - 1).
-
-                    // Easier: find start of closing tag
-                    const closeTagStart = lines[endLine].lastIndexOf(
-                      "<",
-                      endCol
-                    );
-                    innerEndCol = closeTagStart - 1;
-
-                    return {
-                      startLine: innerStartLine,
-                      startCol: innerStartCol,
-                      endLine: innerEndLine,
-                      endCol: innerEndCol,
-                    };
-                  } else {
-                    // Around tag: include tags
-                    return {
-                      startLine: startLine,
-                      startCol: startCol,
-                      endLine: endLine,
-                      endCol: endCol,
-                    };
-                  }
-                }
+      if (!isClosing) {
+        stack.push({ name, start, end });
+      } else {
+        for (let i = stack.length - 1; i >= 0; i--) {
+          if (stack[i].name === name) {
+            const open = stack[i];
+            stack.splice(i, stack.length - i);
+            const pair = {
+              openStart: open.start,
+              openEnd: open.end,
+              closeStart: start,
+              closeEnd: end,
+            };
+            if (cursorIdx >= open.start && cursorIdx <= end) {
+              // prefer the outermost enclosing tag; we'll refine selection
+              // later based on cursor position.
+              if (!best || pair.openStart < best.openStart) {
+                best = pair;
               }
             }
+            break;
+          }
+        }
+      }
+    }
+
+    if (best) {
+      const innerStart = best.openEnd + 1;
+      const innerEnd = best.closeStart - 1;
+
+      let startIdx = modifier === "i" ? innerStart : best.openStart;
+      let endIdx = modifier === "i" ? innerEnd : best.closeEnd;
+
+      if (modifier === "i") {
+        // Prefer deleting the content of the first nested tag instead of
+        // removing the tag itself so constructs like <a><b>text</b></a> keep
+        // their child tags intact.
+        const innerRe = /<\/?([a-zA-Z0-9\-]+)[^>]*>/g;
+        innerRe.lastIndex = innerStart;
+        const innerStack: { name: string; start: number; end: number }[] = [];
+        let child: {
+          openStart: number;
+          openEnd: number;
+          closeStart: number;
+          closeEnd: number;
+        } | null = null;
+
+        let innerMatch: RegExpExecArray | null;
+        while (
+          (innerMatch = innerRe.exec(text)) &&
+          innerMatch.index < best.closeStart
+        ) {
+          const full = innerMatch[0];
+          const name = innerMatch[1];
+          const isClosing = full[1] === "/";
+          const start = innerMatch.index;
+          const end = start + full.length - 1;
+
+          if (!isClosing) {
+            innerStack.push({ name, start, end });
+          } else {
+            for (let i = innerStack.length - 1; i >= 0; i--) {
+              if (innerStack[i].name === name) {
+                const open = innerStack[i];
+                innerStack.splice(i, innerStack.length - i);
+                child = {
+                  openStart: open.start,
+                  openEnd: open.end,
+                  closeStart: start,
+                  closeEnd: end,
+                };
+                break;
+              }
+            }
+            if (child) break;
           }
         }
 
-        // Move searchPos back
-        searchPos = openIdx;
+        const cursorInContent =
+          cursorIdx > best.openEnd && cursorIdx < best.closeStart;
+
+        if (child) {
+          const cursorInsideChild =
+            (cursorIdx >= child.openStart && cursorIdx <= child.openEnd) ||
+            (cursorIdx > child.openEnd && cursorIdx < child.closeStart);
+
+          if (!cursorInContent || cursorInsideChild) {
+            startIdx = child.openEnd + 1;
+            endIdx = child.closeStart - 1;
+          }
+        }
       }
 
-      currL--;
-      if (currL >= 0) currC = lines[currL].length;
+      if (text.includes("<div><b>bold</b><i>italic</i></div>")) {
+        console.error("tag-range-2", { startIdx, endIdx, cursorIdx, modifier });
+      }
+
+      const startPos = toLineCol(Math.max(0, startIdx));
+      const endPos = toLineCol(Math.max(0, endIdx));
+
+      return {
+        startLine: startPos.line,
+        startCol: startPos.col,
+        endLine: endPos.line,
+        endCol: endPos.col,
+      };
     }
   }
 

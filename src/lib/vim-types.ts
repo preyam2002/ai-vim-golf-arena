@@ -40,7 +40,10 @@ export interface VimState {
     | "commandline";
   pendingOperator: string | null;
   registers: Record<string, string>;
-  registerMetadata: Record<string, { isLinewise: boolean }>;
+  registerMetadata: Record<
+    string,
+    { isLinewise: boolean; fromDelete?: boolean }
+  >;
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   lastChange: LastChange | null;
@@ -54,6 +57,7 @@ export interface VimState {
   macroBuffer: string;
   lastMacroRegister: string | null;
   commandBuffer: string[];
+  pendingDigraph: string | null;
   lineAtCursorEntry: { line: number; content: string } | null;
   visualBlock: {
     startLine: number;
@@ -63,7 +67,9 @@ export interface VimState {
     append: boolean;
     usedB?: boolean;
   } | null;
+  visualBlockRagged: boolean;
   visualBlockWaitingInsert: boolean;
+  visualBlockImplicitInsert: boolean;
   visualBlockInsertBuffer: string;
   visualBlockInsertStart: number | null;
   visualBlockInsertEnd: number | null;
@@ -71,6 +77,14 @@ export interface VimState {
   insertRepeatKeys: string[];
   commandLine: string | null;
   pendingMotion: string | null;
+  lastVisualSelection: {
+    mode: "visual" | "visual-line" | "visual-block";
+    startLine: number;
+    startCol: number;
+    endLine: number;
+    endCol: number;
+    ragged?: boolean;
+  } | null;
   options: VimOptions;
 }
 
@@ -91,6 +105,7 @@ export interface SearchState {
   direction: "forward" | "backward";
   lastMatches: SearchMatch[];
   currentMatchIndex: number;
+  allowWrap?: boolean;
 }
 
 export interface SearchMatch {

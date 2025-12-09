@@ -2,10 +2,57 @@ import { VimState } from "./vim-types";
 import { clampCursor } from "./vim-utils";
 import { executeKeystroke } from "./vim-engine"; // Circular dependency, but needed for replay
 
+const DIGRAPHS: Record<string, string> = {
+  "p*": "π",
+};
+
 export function handleInsertModeKeystroke(
   state: VimState,
   keystroke: string
 ): VimState {
+  const insertCharacter = (char: string) => {
+    const line = state.lines[state.cursorLine];
+    const isReplace = state.mode === "replace";
+    if (isReplace && state.cursorCol < line.length) {
+      state.lines[state.cursorLine] =
+        line.slice(0, state.cursorCol) + char + line.slice(state.cursorCol + 1);
+    } else {
+      state.lines[state.cursorLine] =
+        line.slice(0, state.cursorCol) + char + line.slice(state.cursorCol);
+    }
+    state.cursorCol += char.length;
+    if (state.insertRepeatCount > 1) {
+      state.insertRepeatKeys.push(char);
+    }
+  };
+
+  if (state.pendingDigraph !== null) {
+    if (keystroke.length === 1) {
+      state.pendingDigraph += keystroke;
+      if (state.pendingDigraph.length >= 2) {
+        const digraph = state.pendingDigraph;
+        const mapped = DIGRAPHS[digraph];
+        state.pendingDigraph = null;
+        if (mapped) {
+          insertCharacter(mapped);
+        } else {
+          for (const ch of digraph.split("")) {
+            insertCharacter(ch);
+          }
+        }
+        return state;
+      }
+      return state;
+    } else {
+      state.pendingDigraph = null;
+    }
+  }
+
+  if (keystroke === "<C-K>") {
+    state.pendingDigraph = "";
+    return state;
+  }
+
   if (keystroke === "<Esc>" || keystroke === "<C-c>") {
     const repeatCount = state.insertRepeatCount ?? 1;
     const repeatKeys = state.insertRepeatKeys ?? [];
@@ -78,7 +125,9 @@ export function handleInsertModeKeystroke(
                 line.slice(state.cursorCol + 1);
             } else {
               state.lines[state.cursorLine] =
-                line.slice(0, state.cursorCol) + key + line.slice(state.cursorCol);
+                line.slice(0, state.cursorCol) +
+                key +
+                line.slice(state.cursorCol);
             }
             state.cursorCol++;
           }
@@ -89,9 +138,7 @@ export function handleInsertModeKeystroke(
     state.mode = "normal";
     const lineLen = state.lines[state.cursorLine]?.length ?? 0;
     const desiredCol =
-      repeatCount > 1
-        ? state.cursorCol
-        : Math.max(0, state.cursorCol - 1);
+      repeatCount > 1 ? state.cursorCol : Math.max(0, state.cursorCol - 1);
     state.cursorCol = Math.max(
       0,
       Math.min(desiredCol, Math.max(0, lineLen - 1))
@@ -105,6 +152,46 @@ export function handleInsertModeKeystroke(
     };
     state.commandBuffer = [];
 
+    return state;
+  }
+
+  // Insert-mode shortcuts
+  if (keystroke === "<C-u>") {
+    const line = state.lines[state.cursorLine] || "";
+    state.lines[state.cursorLine] = line.slice(state.cursorCol);
+    state.cursorCol = 0;
+    if (state.insertRepeatCount > 1) state.insertRepeatKeys.push(keystroke);
+    return state;
+  }
+
+  if (keystroke === "<C-w>") {
+    const line = state.lines[state.cursorLine] || "";
+    let idx = state.cursorCol - 1;
+    while (idx >= 0 && /\s/.test(line[idx])) idx--;
+    while (idx >= 0 && !/\s/.test(line[idx])) idx--;
+    let deleteFrom = Math.max(0, idx + 1);
+    while (deleteFrom > 0 && /\s/.test(line[deleteFrom - 1])) deleteFrom--;
+    state.lines[state.cursorLine] =
+      line.slice(0, deleteFrom) + line.slice(state.cursorCol);
+    state.cursorCol = deleteFrom;
+    if (state.insertRepeatCount > 1) state.insertRepeatKeys.push(keystroke);
+    return state;
+  }
+
+  if (keystroke === "<C-t>") {
+    state.lines[state.cursorLine] =
+      "  " + (state.lines[state.cursorLine] || "");
+    state.cursorCol += 2;
+    if (state.insertRepeatCount > 1) state.insertRepeatKeys.push(keystroke);
+    return state;
+  }
+
+  if (keystroke === "<C-d>") {
+    const line = state.lines[state.cursorLine] || "";
+    const removed = line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0;
+    state.lines[state.cursorLine] = line.slice(removed);
+    state.cursorCol = Math.max(0, state.cursorCol - removed);
+    if (state.insertRepeatCount > 1) state.insertRepeatKeys.push(keystroke);
     return state;
   }
 
@@ -143,20 +230,7 @@ export function handleInsertModeKeystroke(
   }
 
   if (keystroke.length === 1) {
-    const line = state.lines[state.cursorLine];
-    const isReplace = state.mode === "replace";
-
-    if (isReplace && state.cursorCol < line.length) {
-      state.lines[state.cursorLine] =
-        line.slice(0, state.cursorCol) + keystroke + line.slice(state.cursorCol + 1);
-    } else {
-      state.lines[state.cursorLine] =
-        line.slice(0, state.cursorCol) + keystroke + line.slice(state.cursorCol);
-    }
-    state.cursorCol++;
-    if (state.insertRepeatCount > 1) {
-      state.insertRepeatKeys.push(keystroke);
-    }
+    insertCharacter(keystroke);
   }
 
   return state;

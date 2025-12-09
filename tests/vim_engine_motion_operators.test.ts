@@ -21,13 +21,13 @@ describe("motion/operator combos", () => {
   });
 
   test("d$ deletes to end of line", () => {
-    const out = run("abc def", "fdd$");
+    const out = run("abc def", "fd$");
     expect(out).toBe("abc ");
   });
 
   test("caw changes a word", () => {
     const out = run("hello world", "cawbye<Esc>");
-    expect(out).toBe("bye world");
+    expect(out).toBe("byeworld");
   });
 
   test("ct, change to comma", () => {

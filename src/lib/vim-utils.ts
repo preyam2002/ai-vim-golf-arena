@@ -197,7 +197,11 @@ export function findWordBoundary(
       if (i < 0) return 0;
       const targetType = isWordFn(line[i]);
       const end = i;
-      while (i >= 0 && !isWhitespace(line[i]) && isWordFn(line[i]) === targetType) {
+      while (
+        i >= 0 &&
+        !isWhitespace(line[i]) &&
+        isWordFn(line[i]) === targetType
+      ) {
         i--;
       }
       return Math.max(0, end);
@@ -230,7 +234,11 @@ export function findWordBoundary(
       if (i < 0) return 0;
       const targetType = isWordFn(line[i]);
       const end = i;
-      while (i >= 0 && !isWhitespace(line[i]) && isWordFn(line[i]) === targetType) {
+      while (
+        i >= 0 &&
+        !isWhitespace(line[i]) &&
+        isWordFn(line[i]) === targetType
+      ) {
         i--;
       }
       return Math.max(0, end);
@@ -305,10 +313,10 @@ export function deleteRange(
   endCol: number,
   isLineWise: boolean,
   register?: string,
-  saveToRegisterFn?: (state: any, text: string, register: string) => void
+  saveToRegisterFn?: (state: any, text: string, register?: string) => void
 ): string {
   let deletedText = "";
-  const targetRegister = register || state.activeRegister || '"';
+  const explicitRegister = register ?? state.activeRegister ?? null;
   state.activeRegister = null;
 
   // Guard against empty or out-of-bounds ranges
@@ -345,8 +353,107 @@ export function deleteRange(
   }
 
   if (saveToRegisterFn) {
-    saveToRegisterFn(state, deletedText, targetRegister, isLineWise);
+    // Only pass an explicit register when the caller/user chose one; otherwise
+    // let the saver handle unnamed/numbered/small-delete logic.
+    saveToRegisterFn(
+      state,
+      deletedText,
+      explicitRegister === null ? undefined : explicitRegister,
+      isLineWise
+    );
   }
   clampCursor(state);
   return deletedText;
+}
+
+const SENTENCE_END = /[.!?]/;
+const isSentenceEndChar = (c: string) => SENTENCE_END.test(c);
+
+function nextNonSpace(
+  lines: string[],
+  line: number,
+  col: number
+): { line: number; col: number } {
+  let l = line;
+  let c = col;
+  while (l < lines.length) {
+    const text = lines[l] || "";
+    while (c < text.length && isWhitespace(text[c])) c++;
+    if (c < text.length) return { line: l, col: c };
+    l++;
+    c = 0;
+  }
+  return {
+    line: Math.max(0, lines.length - 1),
+    col: Math.max(0, (lines[lines.length - 1]?.length || 1) - 1),
+  };
+}
+
+function prevBlankBoundary(
+  lines: string[],
+  line: number
+): { line: number; col: number } | null {
+  let l = line;
+  while (l > 0) {
+    if (lines[l - 1]?.trim() === "") {
+      return { line: l, col: 0 };
+    }
+    l--;
+  }
+  return null;
+}
+
+export function findSentenceStartForward(
+  lines: string[],
+  line: number,
+  col: number
+): { line: number; col: number } {
+  // If we're on a blank line, next sentence starts at next non-blank
+  if ((lines[line] || "").trim() === "") {
+    return nextNonSpace(lines, line + 1, 0);
+  }
+
+  for (let l = line; l < lines.length; l++) {
+    const text = lines[l] || "";
+    let startCol = l === line ? col + 1 : 0;
+    if (text.trim() === "" && l > line) {
+      return nextNonSpace(lines, l + 1, 0);
+    }
+    for (let i = startCol; i < text.length; i++) {
+      if (isSentenceEndChar(text[i])) {
+        return nextNonSpace(lines, l, i + 1);
+      }
+    }
+  }
+  return {
+    line: Math.max(0, lines.length - 1),
+    col: Math.max(0, (lines[lines.length - 1]?.length || 1) - 1),
+  };
+}
+
+export function findSentenceStartBackward(
+  lines: string[],
+  line: number,
+  col: number
+): { line: number; col: number } {
+  // If blank line, previous boundary is next non-blank after earlier blank
+  const blankBoundary = prevBlankBoundary(lines, line);
+  if (blankBoundary) {
+    return blankBoundary;
+  }
+
+  for (let l = line; l >= 0; l--) {
+    const text = lines[l] || "";
+    let startCol =
+      l === line ? Math.min(col - 1, text.length - 1) : text.length - 1;
+    for (let i = startCol; i >= 0; i--) {
+      if (isSentenceEndChar(text[i])) {
+        return nextNonSpace(lines, l, i + 1);
+      }
+    }
+    if (text.trim() === "" && l < line) {
+      return nextNonSpace(lines, l + 1, 0);
+    }
+  }
+  return { line: 0, col: 0 };
 }

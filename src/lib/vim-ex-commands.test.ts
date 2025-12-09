@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { createInitialState, executeKeystroke, tokenizeKeystrokes } from "./vim-engine";
+import {
+  createInitialState,
+  executeKeystroke,
+  tokenizeKeystrokes,
+} from "./vim-engine";
+import { PI_DIGITS } from "./vim-ex-commands";
 
 function runKeystrokes(text: string, ks: string) {
   let state = createInitialState(text);
@@ -23,5 +28,28 @@ describe("vim ex command robustness", () => {
     const state = runKeystrokes(start, ":%s/)/x/g<CR>");
     expect(state.lines.join("\n")).toBe("axb");
   });
-});
 
+  test("substitute handles escaped delimiter for Vim-style \\/", () => {
+    const start = "(DMY): 09/10/2024";
+    const ks =
+      ":%s/(DMY): \\([0-9][0-9]\\)\\/\\([0-9][0-9]\\)\\/\\([0-9]\\{4\\}\\)/(YMD): \\3\\/\\2\\/\\1/g<CR>";
+    const state = runKeystrokes(start, ks);
+    expect(state.lines.join("\n")).toBe("(YMD): 2024/10/09");
+  });
+
+  test(":put=Pi() inserts digits and digraph inserts π", () => {
+    const start = "fu! Pi()\nlet x=''";
+    const state = runKeystrokes(start, "ggdG:put=Pi()<CR>o<C-K>p*<Esc>");
+    expect(state.lines).toEqual([PI_DIGITS, "π"]);
+    expect(state.mode).toBe("normal");
+  });
+
+  test(":r ! with Pi helper stubs shell output", () => {
+    const start = "";
+    const state = runKeystrokes(
+      start,
+      ":r !vim -c 'let @a=Pi()|%p' -es +\"norm G$xx\" +q<CR>"
+    );
+    expect(state.lines).toEqual([PI_DIGITS]);
+  });
+});

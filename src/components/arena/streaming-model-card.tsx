@@ -385,9 +385,11 @@ export function StreamingModelCard({
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (!done && value) {
+          buffer += decoder.decode(value, { stream: true });
+        }
 
-        buffer += decoder.decode(value, { stream: true });
+        // Process all complete lines; keep the last partial (if any) in buffer
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
@@ -405,11 +407,6 @@ export function StreamingModelCard({
 
             // API returns {type: 'token', content: 'x'} format
             if (parsed.type === "token" && parsed.content) {
-              // console.log(
-              //   `[StreamingModelCard] Received token: ${JSON.stringify(
-              //     parsed.content
-              //   )}`
-              // );
               processTokens(parsed.content);
               setDebugInfo(
                 (prev) =>
@@ -432,6 +429,26 @@ export function StreamingModelCard({
           } catch (e) {
             console.error("Failed to parse SSE data:", e);
           }
+        }
+
+        if (done) {
+          // Process any remaining buffered line that didn't end with \n
+          if (buffer.trim().startsWith("data: ")) {
+            const data = buffer.trim().slice(6);
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === "token" && parsed.content) {
+                processTokens(parsed.content);
+              }
+              if (parsed.timeMs !== undefined) {
+                setTimeMs(parsed.timeMs);
+                timeMsRef.current = parsed.timeMs;
+              }
+            } catch (e) {
+              console.error("Failed to parse trailing SSE data:", e);
+            }
+          }
+          break;
         }
       }
 
@@ -577,6 +594,16 @@ export function StreamingModelCard({
       return () => clearTimeout(timer);
     }
   }, [playbackMode, steps.length, currentStepIndex, playSpeed]);
+
+  // When a run finishes (or verifying), make sure the view snaps to the final step
+  useEffect(() => {
+    if ((status === "complete" || status === "verifying") && steps.length > 0) {
+      const finalIndex = steps.length - 1;
+      if (currentStepIndex !== finalIndex) {
+        setCurrentStepIndex(finalIndex);
+      }
+    }
+  }, [status, steps.length, currentStepIndex]);
 
   // Auto-scroll keystroke history to current step
   useEffect(() => {

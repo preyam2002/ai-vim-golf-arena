@@ -31,6 +31,12 @@ const redisConfig =
 const redis = redisConfig ? new Redis(redisConfig) : null;
 const useRedis = !!redis;
 
+function stripSteps(result: RunResult): RunResult {
+  // Persist only the lightweight fields; steps can be regenerated from keystrokes when needed.
+  const { steps: _steps, ...rest } = result;
+  return { ...rest, steps: [] };
+}
+
 function ensureDb() {
   if (useRedis) return;
   const dir = path.dirname(DB_PATH);
@@ -101,25 +107,29 @@ export const store = {
     modelId: string
   ): Promise<RunResult | undefined> => {
     if (useRedis && redis) {
-      return (
+      const result =
         (await redis.hget<RunResult>(`results:${challengeId}`, modelId)) ||
-        undefined
-      );
+        undefined;
+      return result ? stripSteps(result) : undefined;
     }
     const db = readDb();
-    return db.results[challengeId]?.[modelId];
+    const result = db.results[challengeId]?.[modelId];
+    return result ? stripSteps(result) : undefined;
   },
 
   saveResult: async (challengeId: string, result: RunResult) => {
+    const sanitized = stripSteps(result);
     if (useRedis && redis) {
-      await redis.hset(`results:${challengeId}`, { [result.modelId]: result });
+      await redis.hset(`results:${challengeId}`, {
+        [sanitized.modelId]: sanitized,
+      });
       return;
     }
     const db = readDb();
     if (!db.results[challengeId]) {
       db.results[challengeId] = {};
     }
-    db.results[challengeId][result.modelId] = result;
+    db.results[challengeId][sanitized.modelId] = sanitized;
     writeDb(db);
   },
 

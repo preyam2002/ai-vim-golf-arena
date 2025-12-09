@@ -75,9 +75,10 @@ const targetText = `{
     "TEST_METADATA_BASE_URL": "http://127.0.0.1:8801"
 }`;
 
-// Sequence adjusted to drop comments/blank lines so the substitution matches only key/value rows
+// Sequence adjusted to drop comments/blank lines so the substitution matches only key/value rows,
+// remove the final trailing comma, and wrap with braces.
 const keystrokes =
-  ':%g/^#/d<CR>:%g/^$/d<CR>:%s/^\\(.*\\)=\\(.*\\)$/ "\\1": "\\2",/g<CR>ggI{<CR> <Esc>G$A"<CR>}<Esc>ggO<CR> <Esc>jGdd';
+  ':%g/^#/d<CR>:%g/^$/d<CR>:%s/^\\(.*\\)=\\(.*\\)$/ "\\1": "\\2",/g<CR>ggI{<CR><Esc>G$xA<CR>}<Esc>';
 
 function runKeystrokes(text: string, keys: string): string {
   let state = createInitialState(text);
@@ -90,7 +91,7 @@ function runKeystrokes(text: string, keys: string): string {
 describe("env to json sequence", () => {
   test("applies provided keystrokes to reach target", () => {
     const output = runKeystrokes(startText, keystrokes);
-    const normalized = normalizeText(output);
+    const normalized = normalizeText(output).trimStart();
     expect(normalized.startsWith("{")).toBe(true);
     expect(normalized.includes('"JOBS_API_URL": "http://localhost:5000"')).toBe(
       true

@@ -333,4 +333,129 @@ describe("vim-engine", () => {
     expect(state.cursorCol).toBe(1);
     expect(state.mode).toBe("normal");
   });
+
+  describe("random mixed sequences", () => {
+    test("delete/change/append combo", () =>
+      runTest("one two three", "dwA!<Esc>", "two three!"));
+
+    test("uppercases whole buffer quickly", () =>
+      runTest("mix\nCase\nhere", "gggUG", "MIX\nCASE\nHERE"));
+
+    test("search, edit, repeat next match", () =>
+      runTest("foo bar foo", "ciwX<Esc>/foo<CR>ciwY<Esc>", "X bar Y"));
+
+    test("macro append replay across lines", () =>
+      runTest("one\ntwo\nthree", "qaA!<Esc>qj@aj@a", "one!\ntwo!\nthree!"));
+  });
+
+  describe("randomized fuzz sequences", () => {
+    const modes = ["normal", "insert", "visual", "visual-line", "visual-block", "replace", "commandline"];
+
+    function seededRand(seed: number) {
+      let x = seed | 0;
+      return () => {
+        // xorshift32
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        return ((x >>> 0) % 1_000_000) / 1_000_000;
+      };
+    }
+
+    const tokenPool = [
+      "h",
+      "j",
+      "k",
+      "l",
+      "w",
+      "b",
+      "e",
+      "0",
+      "$",
+      "x",
+      "i",
+      "a",
+      "A",
+      "o",
+      "O",
+      "v",
+      "V",
+      "<Esc>",
+      "dd",
+      "yy",
+      "p",
+      "P",
+      "dw",
+      "ciw",
+      "gUiw",
+    ];
+
+    const startPool = [
+      "alpha beta gamma",
+      "line1\nline2\nline3",
+      "foo bar baz\nqux quux",
+      "one",
+      "a b c d e",
+    ];
+
+    function assertStateInvariant(state: VimState) {
+      expect(state.lines.length).toBeGreaterThan(0);
+      expect(state.cursorLine).toBeGreaterThanOrEqual(0);
+      expect(state.cursorLine).toBeLessThan(state.lines.length);
+      const lineLen = state.lines[state.cursorLine]?.length ?? 0;
+      const maxCol = state.mode === "insert" ? lineLen : Math.max(0, lineLen - 1);
+      expect(state.cursorCol).toBeGreaterThanOrEqual(0);
+      expect(state.cursorCol).toBeLessThanOrEqual(maxCol);
+      expect(modes.includes(state.mode)).toBe(true);
+      for (const line of state.lines) {
+        expect(typeof line).toBe("string");
+      }
+    }
+
+    test("fuzz 30-step sequences (seeded)", () => {
+      const rand = seededRand(42);
+      const sequences = 10;
+      const steps = 30;
+
+      for (let s = 0; s < sequences; s++) {
+        let state = createInitialState(startPool[s % startPool.length]);
+        for (let i = 0; i < steps; i++) {
+          const token = tokenPool[Math.floor(rand() * tokenPool.length)];
+          state = executeKeystroke(state, token);
+          assertStateInvariant(state);
+        }
+        // Ensure resulting text is a string joinable
+        expect(typeof state.lines.join("\n")).toBe("string");
+      }
+    });
+  });
+
+  describe("deterministic mixed sequences", () => {
+    test("swap two chars with xp", () => runTest("ab", "xp", "ba"));
+
+    test("dot repeat change word", () =>
+      runTest("foo bar baz", "wciwZZZ<Esc>.", "foo ZZZ baz"));
+
+    test("uppercase word with gUw", () => runTest("hello there", "gUw", "HELLO There"));
+
+    test("delete paragraph with dap", () =>
+      runTest("one\n\nTwo\nThree", "dap", "\nTwo\nThree"));
+
+    test("paste yanked line above with P", () =>
+      runTest("first\nsecond", "yyP", "first\nfirst\nsecond"));
+
+    test("counted increment with <C-a>", () => runTest("x1", "5<C-a>", "x2"));
+
+    test("visual change selection", () => runTest("abcde", "vllcX<Esc>", "Xde"));
+
+    test("I honors indentation", () => runTest("  hi", "IY<Esc>", "  Yhi"));
+
+    test("replace char with r", () => runTest("abc", "lrZ", "aZc"));
+
+    test("indent line with >>", () => runTest("a\nb", "j>>", "a\n  b"));
+
+    test("append then repeat on next line", () => runTest("a\nb", "A1<Esc>j.", "a1\nb1"));
+
+    test("delete line then paste below", () => runTest("one\ntwo", "ddp", "two\none"));
+  });
 });

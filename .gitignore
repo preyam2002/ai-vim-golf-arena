@@ -16,6 +16,12 @@
 # misc
 .DS_Store
 *.pem
+tmp/
+output*.txt
+test_output*.txt
+data/
+data/solutions-full/
+data/db_temp.json
 
 # debug
 npm-debug.log*

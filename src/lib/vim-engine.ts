@@ -104,6 +104,7 @@ export function createInitialState(
       direction: "forward",
       lastMatches: [],
       currentMatchIndex: -1,
+      allowWrap: true,
     },
     marks: {},
     visualStart: null,
@@ -114,9 +115,12 @@ export function createInitialState(
     macroBuffer: "",
     lastMacroRegister: null,
     commandBuffer: [],
+    pendingDigraph: null,
     lineAtCursorEntry: null,
     visualBlock: null,
+    visualBlockRagged: false,
     visualBlockWaitingInsert: false,
+    visualBlockImplicitInsert: false,
     visualBlockInsertBuffer: "",
     visualBlockInsertStart: null,
     visualBlockInsertEnd: null,
@@ -124,6 +128,7 @@ export function createInitialState(
     insertRepeatKeys: [],
     commandLine: null,
     pendingMotion: null,
+    lastVisualSelection: null,
     options: mergedOptions,
   };
 }
@@ -192,15 +197,37 @@ export function executeKeystrokeInternal(
 
     newState.searchState.pattern = pattern;
     newState.searchState.direction = direction;
+    newState.searchState.allowWrap = true;
 
-    const matches = performSearch(
+    // Include a match at the cursor position when initiating a search, so
+    // `/hello` while on "hello" lands on the current word instead of skipping
+    // to the next occurrence.
+    const searchStartCol =
+      direction === "forward"
+        ? Math.max(-1, newState.cursorCol - 1)
+        : newState.cursorCol + 1;
+
+    let matches = performSearch(
       newState.lines,
       pattern,
       newState.cursorLine,
-      newState.cursorCol,
+      searchStartCol,
       direction,
       newState.options
     );
+
+    if (matches.length === 0) {
+      const wrapLine = direction === "forward" ? -1 : newState.lines.length;
+      const wrapCol = direction === "forward" ? -1 : Number.MAX_SAFE_INTEGER;
+      matches = performSearch(
+        newState.lines,
+        pattern,
+        wrapLine,
+        wrapCol,
+        direction,
+        newState.options
+      );
+    }
 
     if (matches.length > 0) {
       newState.cursorLine = matches[0].line;
@@ -213,6 +240,20 @@ export function executeKeystrokeInternal(
     }
 
     return newState;
+  }
+
+  // In insert/replace modes, treat multi-char tokens (that aren't special keys)
+  // as individual typed characters to avoid misinterpreting bundled motion tokens.
+  if (
+    (newState.mode === "insert" || newState.mode === "replace") &&
+    keystroke.length > 1 &&
+    !keystroke.startsWith("<")
+  ) {
+    let tempState = newState;
+    for (const ch of keystroke.split("")) {
+      tempState = executeKeystroke(tempState, ch);
+    }
+    return tempState;
   }
 
   switch (newState.mode) {
@@ -247,8 +288,13 @@ export function tokenizeKeystrokes(
   while (i < keystrokes.length) {
     if (tokens.length >= maxTokens) break;
 
-    // Combine find/till motions with their target character (f,F,t,T)
-    if ("fFtT".includes(keystrokes[i]) && i + 1 < keystrokes.length) {
+    // Combine find/till motions with their target character (f,F,t,T),
+    // but avoid swallowing special-key sequences like <Esc>.
+    if (
+      "fFtT".includes(keystrokes[i]) &&
+      i + 1 < keystrokes.length &&
+      keystrokes[i + 1] !== "<"
+    ) {
       tokens.push(keystrokes.slice(i, i + 2));
       i += 2;
       continue;
@@ -278,7 +324,8 @@ export function formatToken(token: string): string {
 }
 
 export function normalizeText(text: string): string {
-  return text.replace(/\r\n/g, "\n").trim();
+  // Preserve trailing spaces but normalize newlines and drop a single trailing \n
+  return text.replace(/\r\n/g, "\n").replace(/\n$/, "");
 }
 
 export function countKeystrokes(keystrokes: string): number {
