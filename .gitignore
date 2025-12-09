@@ -19,7 +19,7 @@
 tmp/
 output*.txt
 test_output*.txt
-data/
+data
 data/solutions-full/
 data/db_temp.json
 

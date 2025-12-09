@@ -158,6 +158,7 @@ enum TokenType {
   NUMBER,
   IDENTIFIER,
   OPERATOR,
+  COMMA,
   LPAREN,
   RPAREN,
   EOF,
@@ -168,11 +169,16 @@ interface Token {
   value: string;
 }
 
+type VimValue = string | string[];
+
 function evaluateVimExpression(
   expr: string,
-  context: { line: number }
+  context: { line: number; match?: string; groups?: (string | undefined)[] }
 ): string {
   let pos = 0;
+
+  const asString = (val: VimValue): string =>
+    Array.isArray(val) ? val.join("") : val;
 
   function peek(): string {
     return pos < expr.length ? expr[pos] : "";
@@ -218,6 +224,9 @@ function evaluateVimExpression(
       } else if (char === ")") {
         consume();
         tokens.push({ type: TokenType.RPAREN, value: ")" });
+      } else if (char === ",") {
+        consume();
+        tokens.push({ type: TokenType.COMMA, value: "," });
       } else {
         consume(); // Skip unknown
       }
@@ -238,11 +247,11 @@ function evaluateVimExpression(
     return tokens[tokenPos++];
   }
 
-  function parseExpression(): string {
+  function parseExpression(): VimValue {
     return parseConcat();
   }
 
-  function parseConcat(): string {
+  function parseConcat(): VimValue {
     let left = parseAddSub();
     while (
       peekToken().type === TokenType.OPERATOR &&
@@ -250,12 +259,12 @@ function evaluateVimExpression(
     ) {
       consumeToken();
       const right = parseAddSub();
-      left += right;
+      left = asString(left) + asString(right);
     }
     return left;
   }
 
-  function parseAddSub(): string {
+  function parseAddSub(): VimValue {
     let left = parseTerm();
     while (
       peekToken().type === TokenType.OPERATOR &&
@@ -263,8 +272,8 @@ function evaluateVimExpression(
     ) {
       const op = consumeToken().value;
       const right = parseTerm();
-      const leftNum = parseFloat(left);
-      const rightNum = parseFloat(right);
+      const leftNum = parseFloat(asString(left));
+      const rightNum = parseFloat(asString(right));
       const result =
         isNaN(leftNum) || isNaN(rightNum)
           ? ""
@@ -276,7 +285,54 @@ function evaluateVimExpression(
     return left;
   }
 
-  function parseTerm(): string {
+  function parseFunctionCall(name: string): VimValue {
+    consumeToken(); // LPAREN
+    const args: VimValue[] = [];
+    if (peekToken().type !== TokenType.RPAREN) {
+      while (true) {
+        args.push(parseExpression());
+        if (peekToken().type === TokenType.COMMA) {
+          consumeToken();
+          continue;
+        }
+        break;
+      }
+    }
+    if (peekToken().type === TokenType.RPAREN) consumeToken();
+
+    const lower = name.toLowerCase();
+    switch (lower) {
+      case "submatch": {
+        const idxRaw = asString(args[0] ?? "0");
+        const idx = Number(idxRaw);
+        if (Number.isNaN(idx)) return "";
+        if (idx === 0) return context.match ?? "";
+        return context.groups?.[idx - 1] ?? "";
+      }
+      case "split": {
+        const target = asString(args[0] ?? "");
+        const sep = args.length > 1 ? asString(args[1]) : "";
+        return target.split(sep);
+      }
+      case "reverse": {
+        const target = args[0];
+        if (Array.isArray(target)) return [...target].reverse();
+        return asString(target ?? "")
+          .split("")
+          .reverse();
+      }
+      case "join": {
+        const list = args[0];
+        const sep = asString(args[1] ?? "");
+        if (Array.isArray(list)) return list.join(sep);
+        return asString(list ?? "");
+      }
+      default:
+        return "";
+    }
+  }
+
+  function parseTerm(): VimValue {
     const token = consumeToken();
     if (token.type === TokenType.STRING) {
       return token.value;
@@ -285,16 +341,10 @@ function evaluateVimExpression(
     } else if (token.type === TokenType.IDENTIFIER) {
       const lower = token.value.toLowerCase();
       const hasParens = peekToken().type === TokenType.LPAREN;
+      if (hasParens) {
+        return parseFunctionCall(lower);
+      }
       if (lower === "pi") {
-        if (hasParens) {
-          consumeToken(); // LPAREN
-          if (peekToken().type !== TokenType.RPAREN) {
-            parseExpression(); // discard args for now
-          }
-          if (peekToken().type === TokenType.RPAREN) {
-            consumeToken();
-          }
-        }
         return PI_DIGITS;
       }
       if (token.value === "line") {
@@ -318,7 +368,7 @@ function evaluateVimExpression(
     return "";
   }
 
-  return parseExpression();
+  return asString(parseExpression());
 }
 
 function parseCommandRange(
@@ -901,9 +951,17 @@ export function executeExCommand(
       if (isExpression) {
         for (let i = startLine; i <= endLine; i++) {
           const line = state.lines[i] ?? "";
-          state.lines[i] = line.replace(lineRegex, () => {
-            return evaluateVimExpression(exprBody || "", { line: i + 1 });
-          });
+          state.lines[i] = line.replace(
+            lineRegex,
+            (match: string, ...rest: (string | undefined)[]) => {
+              const groups = rest.slice(0, -2) as (string | undefined)[];
+              return evaluateVimExpression(exprBody || "", {
+                line: i + 1,
+                match,
+                groups,
+              });
+            }
+          );
         }
       } else if (hasNewline) {
         const linesSubset = state.lines.slice(startLine, endLine + 1);
