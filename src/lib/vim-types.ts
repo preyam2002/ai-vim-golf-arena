@@ -24,6 +24,7 @@ export interface VimOptions {
     indent: boolean;
   };
   terminalReverse: string;
+  maxHistorySize?: number;
 }
 
 export interface VimState {
@@ -44,8 +45,11 @@ export interface VimState {
     string,
     { isLinewise: boolean; fromDelete?: boolean }
   >;
-  undoStack: HistoryEntry[];
-  redoStack: HistoryEntry[];
+  undoStack: HistoryEntry[]; // Legacy - prefer undoTree
+  redoStack: HistoryEntry[]; // Legacy - prefer undoTree
+  undoRoot?: UndoNode;
+  undoHead?: UndoNode;
+  undoList?: UndoNode[];
   lastChange: LastChange | null;
   searchState: SearchState;
   marks: Record<string, Mark>;
@@ -76,6 +80,14 @@ export interface VimState {
   insertRepeatCount: number;
   insertRepeatKeys: string[];
   commandLine: string | null;
+  // Legacy global history
+  globalHistory: {
+    lines: string[];
+    cursorLine: number;
+    cursorCol: number;
+    timestamp: number;
+  }[];
+  globalHistoryIndex: number;
   pendingMotion: string | null;
   lastVisualSelection: {
     mode: "visual" | "visual-line" | "visual-block";
@@ -86,6 +98,16 @@ export interface VimState {
     ragged?: boolean;
   } | null;
   options: VimOptions;
+}
+
+export interface UndoNode {
+  seq: number;
+  timestamp: number;
+  lines: string[];
+  cursorLine: number;
+  cursorCol: number;
+  parent: UndoNode | null;
+  children: UndoNode[];
 }
 
 export interface HistoryEntry {

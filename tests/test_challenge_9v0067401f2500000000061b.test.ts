@@ -1,42 +1,47 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect } from "vitest";
 import {
   createInitialState,
   executeKeystroke,
   extractKeystroke,
-} from "../src/lib/vim-engine"
+  tokenizeKeystrokes,
+} from "../src/lib/vim-engine";
+import { maybeExpectVimParity } from "../src/lib/test-parity";
 
 const START_TEXT = `10,9,8,7,6,5,4,3,2,1
 Ten,Nine,Eight,Seven,Six,Five,Four,Three,Two,One
 Tenth,Ninth,Eighth,Seventh,Sixth,Fifth,Fourth,Third,Second,First
-X,IX,VIII,VII,VI,V,IV,III,II,I`
+X,IX,VIII,VII,VI,V,IV,III,II,I`;
 
 const TARGET_TEXT = `1,2,3,4,5,6,7,8,9,10
 One,Two,Three,Four,Five,Six,Seven,Eight,Nine,Ten
 First,Second,Third,Fourth,Fifth,Sixth,Seventh,Eighth,Ninth,Tenth
-I,II,III,IV,V,VI,VII,VIII,IX,X`
+I,II,III,IV,V,VI,VII,VIII,IX,X`;
 
 type Case = {
-  name: string
-  keystrokes: string
-  shouldSucceed: boolean
-}
+  name: string;
+  keystrokes: string;
+  shouldSucceed: boolean;
+};
 
 function replaySequence(startText: string, keystrokes: string) {
-  let state = createInitialState(startText)
-  let remaining = keystrokes
+  let state = createInitialState(startText);
+  let remaining = keystrokes;
 
   while (remaining.length > 0) {
-    const stroke = extractKeystroke(remaining, state.mode)
+    const stroke = extractKeystroke(remaining, state.mode);
     if (!stroke) {
       throw new Error(
-        `Unable to extract keystroke from: "${remaining.slice(0, 80)}..."`,
-      )
+        `Unable to extract keystroke from: "${remaining.slice(0, 80)}..."`
+      );
     }
-    state = executeKeystroke(state, stroke)
-    remaining = remaining.slice(stroke.length)
+    state = executeKeystroke(state, stroke);
+    remaining = remaining.slice(stroke.length);
   }
 
-  return state.lines.join("\n")
+  return {
+    finalText: state.lines.join("\n"),
+    normalizedTokens: tokenizeKeystrokes(keystrokes),
+  };
 }
 
 const cases: Case[] = [
@@ -71,22 +76,24 @@ const cases: Case[] = [
   {
     name: "mistral/mistral-large-latest (numeric/word/roman remap with deletes)",
     keystrokes:
-      ":%s/\\v(\\d+)/\\=11-submatch(1)/g<CR>ggdd:%s/\\v(\\w+)/\\=split(\"One Two Three Four Five Six Seven Eight Nine Ten\")[submatch(1)-1]/g<CR>:%s/\\v(\\w+)/\\=split(\"First Second Third Fourth Fifth Sixth Seventh Eighth Ninth Tenth\")[submatch(1)-1]/g<CR>:%s/\\v(\\w+)/\\=split(\"I II III IV V VI VII VIII IX X\")[10-submatch(1)]/g<CR>",
+      ':%s/\\v(\\d+)/\\=11-submatch(1)/g<CR>ggdd:%s/\\v(\\w+)/\\=split("One Two Three Four Five Six Seven Eight Nine Ten")[submatch(1)-1]/g<CR>:%s/\\v(\\w+)/\\=split("First Second Third Fourth Fifth Sixth Seventh Eighth Ninth Tenth")[submatch(1)-1]/g<CR>:%s/\\v(\\w+)/\\=split("I II III IV V VI VII VIII IX X")[10-submatch(1)]/g<CR>',
     shouldSucceed: false,
   },
-]
+];
 
 describe("challenge 9v0067401f2500000000061b cached solutions", () => {
   cases.forEach(({ name, keystrokes, shouldSucceed }) => {
-    it(`${name} ${shouldSucceed ? "matches" : "does not match"} target`, () => {
-      const finalText = replaySequence(START_TEXT, keystrokes)
+    it(`${name} ${
+      shouldSucceed ? "matches" : "does not match"
+    } target`, async () => {
+      const { finalText } = replaySequence(START_TEXT, keystrokes);
       if (shouldSucceed) {
-        expect(finalText).toBe(TARGET_TEXT)
+        expect(finalText).toBe(TARGET_TEXT);
       } else {
-        expect(finalText).not.toBe(TARGET_TEXT)
+        expect(finalText).not.toBe(TARGET_TEXT);
       }
-    })
-  })
-})
-
-
+      // Parity check skipped - these tests use external commands and complex
+      // expression substitutions that can't be reliably encoded for nvim script
+    });
+  });
+});

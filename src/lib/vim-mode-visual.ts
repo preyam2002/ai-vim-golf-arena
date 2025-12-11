@@ -80,10 +80,7 @@ export function handleVisualModeKeystroke(
   ) {
     const dir = state.pendingOperator as "f" | "F" | "t" | "T";
     const line = state.lines[state.cursorLine] || "";
-    let startCol = state.cursorCol;
-    if (dir === "t") startCol++;
-    else if (dir === "T") startCol--;
-    state.cursorCol = findChar(line, startCol, keystroke, dir);
+    state.cursorCol = findChar(line, state.cursorCol, keystroke, dir);
     state.pendingOperator = null;
     return state;
   }
@@ -149,6 +146,7 @@ export function handleVisualModeKeystroke(
       (keystroke === "<C-a>" || keystroke === "<C-x>")
     ) {
       // g<C-a>/g<C-x> in visual-block: increment/decrement numbers sequentially down the block
+      const count = Math.max(1, parseInt(state.countBuffer || "1", 10));
       const delta = keystroke === "<C-a>" ? 1 : -1;
       const startCol = Math.min(range.startCol, range.endCol);
       const endCol = Math.max(range.startCol, range.endCol);
@@ -164,7 +162,7 @@ export function handleVisualModeKeystroke(
         return { start: i, end: j };
       };
 
-      let baseNumber: number | null = null;
+      let seq = 1;
       let changed = false;
 
       // Only save undo if we actually change something
@@ -175,27 +173,24 @@ export function handleVisualModeKeystroke(
         const numberSpan = findNumberInSlice(text);
         if (!numberSpan) continue;
 
-        if (baseNumber === null) {
-          baseNumber = parseInt(
-            text.slice(numberSpan.start, numberSpan.end),
-            10
-          );
-          if (Number.isNaN(baseNumber)) {
-            baseNumber = null;
-            continue;
-          }
-          saveUndo(state);
-        }
+        const currentVal = parseInt(
+          text.slice(numberSpan.start, numberSpan.end),
+          10
+        );
+        
+        if (Number.isNaN(currentVal)) continue;
 
-        if (baseNumber === null) continue;
-        const offset = (line - range.startLine) * delta;
-        const newVal = baseNumber + offset;
+        if (!changed) saveUndo(state);
+
+        const change = seq * count * delta;
+        const newVal = currentVal + change;
         const newValStr = newVal.toString();
         state.lines[line] =
           text.slice(0, numberSpan.start) +
           newValStr +
           text.slice(numberSpan.end);
         changed = true;
+        seq++;
       }
 
       state.pendingOperator = null;
@@ -256,7 +251,7 @@ export function handleVisualModeKeystroke(
           const text = state.lines[line] || "";
           const deleteStart = Math.min(startCol, text.length);
           const deleteEnd = ragged
-            ? Math.max(0, text.length - 1)
+            ? Math.max(0, Math.min(endCol, text.length - 1))
             : Math.min(endCol, Math.max(0, text.length - 1));
           const deletedSlice =
             deleteStart >= text.length
@@ -431,11 +426,17 @@ export function handleVisualModeKeystroke(
             range.endCol + 1
           );
         } else {
+          const middleLines = state.lines.slice(
+            range.startLine + 1,
+            range.endLine
+          );
+          const middleText =
+            middleLines.length > 0 ? middleLines.join("\n") + "\n" : "";
+
           text =
             state.lines[range.startLine].slice(range.startCol) +
             "\n" +
-            state.lines.slice(range.startLine + 1, range.endLine).join("\n") +
-            "\n" +
+            middleText +
             state.lines[range.endLine].slice(0, range.endCol + 1);
         }
       }
@@ -549,20 +550,14 @@ export function handleVisualModeKeystroke(
         state.cursorLine = startLine;
         state.cursorCol = startCol;
       }
-      const targetCol =
-        keystroke === "A"
-          ? Math.max(
-              ...state.lines
-                .slice(startLine, endLine + 1)
-                .map((l) => l?.length ?? 0)
-            )
-          : 0;
-
       state.visualBlockImplicitInsert = false;
       state.visualBlock = {
         startLine,
         endLine,
-        col: targetCol,
+        // Anchor at the selection start; per-line target (start or end) is
+        // computed when replaying insert keys so ragged blocks append at each
+        // line's own end.
+        col: Math.min(range.startCol, range.endCol),
         insertStartIndex: 1,
         append: keystroke === "A",
         usedB: hadB,
@@ -581,7 +576,36 @@ export function handleVisualModeKeystroke(
   }
 
   // Movement in visual mode
-  if (state.mode === "visual-block" && keystroke !== "$") {
+  const blockMovementKeys = new Set([
+    "h",
+    "j",
+    "k",
+    "l",
+    "w",
+    "W",
+    "e",
+    "E",
+    "b",
+    "B",
+    "0",
+    "^",
+    "G",
+    "g",
+    "n",
+    "N",
+    "*",
+    "#",
+    "%",
+    "f",
+    "F",
+    "t",
+    "T",
+  ]);
+  if (
+    state.mode === "visual-block" &&
+    keystroke !== "$" &&
+    blockMovementKeys.has(keystroke)
+  ) {
     // Clear ragged $ extension when moving the block selection.
     state.visualBlockRagged = false;
   }
@@ -667,7 +691,11 @@ export function handleVisualModeKeystroke(
     case "W": {
       const line = state.lines[state.cursorLine];
       const atLineEnd = state.cursorCol >= (line.length || 0) - 1;
-      if (atLineEnd && state.cursorLine < state.lines.length - 1) {
+      if (
+        atLineEnd &&
+        state.cursorLine < state.lines.length - 1 &&
+        state.mode !== "visual-block"
+      ) {
         state.cursorLine += 1;
         const nextLine = state.lines[state.cursorLine] || "";
         state.cursorCol = Math.min(
@@ -714,25 +742,30 @@ export function handleVisualModeKeystroke(
       const line = state.lines[state.cursorLine];
       if (
         (keystroke === "b" || keystroke === "B") &&
+        state.mode === "visual-block" &&
         state.cursorCol === 0 &&
         state.cursorLine > 0
       ) {
-        state.cursorLine -= 1;
+        state.cursorLine--;
         const prevLine = state.lines[state.cursorLine] || "";
-        state.cursorCol = Math.max(0, prevLine.length - 1);
-        if (state.visualStart && state.cursorLine < state.visualStart.line) {
-          state.visualStart = {
-            line: state.cursorLine,
-            col: state.visualStart.col,
-          };
-        }
-      } else {
         state.cursorCol = findWordBoundary(
-          line,
-          state.cursorCol,
-          keystroke as any
+          prevLine,
+          prevLine.length,
+          keystroke as "b" | "B"
         );
+        // if (state.visualStart && state.cursorLine < state.visualStart.line) {
+        //   state.visualStart = {
+        //     line: state.cursorLine,
+        //     col: state.visualStart.col,
+        //   };
+        // }
+        break;
       }
+      state.cursorCol = findWordBoundary(
+        line,
+        state.cursorCol,
+        keystroke as any
+      );
       break;
     }
     case "f":
@@ -742,6 +775,31 @@ export function handleVisualModeKeystroke(
       state.pendingOperator = keystroke;
       return state;
     }
+  }
+
+  // Handle o and O in visual modes (swap anchor)
+  if (keystroke === "o") {
+    // o swaps cursor with visualStart (go to other end)
+    if (state.visualStart) {
+      const tempLine = state.cursorLine;
+      const tempCol = state.cursorCol;
+      state.cursorLine = state.visualStart.line;
+      state.cursorCol = state.visualStart.col;
+      state.visualStart = { line: tempLine, col: tempCol };
+      clampCursor(state);
+    }
+    return state;
+  }
+
+  if (keystroke === "O" && state.mode === "visual-block") {
+    // O in visual-block: swap horizontal position (to other corner)
+    if (state.visualStart) {
+      const tempCol = state.cursorCol;
+      state.cursorCol = state.visualStart.col;
+      state.visualStart = { line: state.visualStart.line, col: tempCol };
+      clampCursor(state);
+    }
+    return state;
   }
 
   // Fallback: direct text input in visual-block mode (append across selection)
@@ -771,6 +829,12 @@ export function handleVisualModeKeystroke(
       "*",
       "#",
       "%",
+      "?",
+      "/",
+      "<CR>",
+      "<Enter>",
+      "<Esc>",
+      "<C-c>",
     ].includes(keystroke)
   ) {
     if (!state.visualBlockWaitingInsert) {
@@ -778,13 +842,19 @@ export function handleVisualModeKeystroke(
       state.visualBlockWaitingInsert = true;
     }
     const endCol = Math.max(range.startCol, range.endCol);
-    const insertCol = endCol + 1;
+    const ragged = state.visualBlockRagged;
     for (let line = range.startLine; line <= range.endLine; line++) {
       let text = state.lines[line] || "";
+      const insertCol = ragged ? text.length : endCol + 1;
+      if (text.length < insertCol) {
+        text = text.padEnd(insertCol, " ");
+      }
       state.lines[line] =
         text.slice(0, insertCol) + keystroke + text.slice(insertCol);
     }
-    state.cursorCol = insertCol;
+    state.cursorCol = ragged
+      ? (state.lines[state.cursorLine]?.length ?? 1) - 1
+      : endCol + 1;
     return state;
   }
 

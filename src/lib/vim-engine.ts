@@ -24,7 +24,7 @@ import { handleNormalModeKeystroke } from "./vim-mode-normal";
 import { handleInsertModeKeystroke } from "./vim-mode-insert";
 import { handleVisualModeKeystroke } from "./vim-mode-visual";
 import { handleCommandModeKeystroke } from "./vim-mode-command";
-import { executeExCommand } from "./vim-ex-commands";
+import { executeExCommand, ExCommandHelpers } from "./vim-ex-commands";
 import { performSearch } from "./vim-search";
 
 export type {
@@ -56,6 +56,7 @@ const DEFAULT_VIM_OPTIONS: VimOptions = {
   syntax: true,
   filetype: { detection: true, indent: true },
   terminalReverse: "",
+  maxHistorySize: 1000,
 };
 export { DEFAULT_VIM_OPTIONS };
 
@@ -99,6 +100,15 @@ export function createInitialState(
     undoStack: [],
     redoStack: [],
     lastChange: null,
+    globalHistory: [
+      {
+        lines: lines.length > 0 ? lines : [""],
+        cursorLine: 0,
+        cursorCol: 0,
+        timestamp: Date.now(),
+      },
+    ],
+    globalHistoryIndex: 0,
     searchState: {
       pattern: "",
       direction: "forward",
@@ -158,9 +168,46 @@ export function extractKeystroke(input: string, mode: string): string | null {
 
 export function executeKeystrokeInternal(
   state: VimState,
-  keystroke: string
+  keystroke: string,
+  helpers?: ExCommandHelpers
 ): VimState {
-  let newState = JSON.parse(JSON.stringify(state));
+  // Manual clone to avoid deep cloning extensive history arrays (OOM fix)
+  let newState: VimState = {
+    ...state,
+    lines: [...state.lines],
+    registers: { ...state.registers },
+    registerMetadata: { ...state.registerMetadata },
+    undoStack: [...state.undoStack],
+    redoStack: [...state.redoStack],
+    undoRoot: state.undoRoot, // Tree structure is shared/persistent
+    undoHead: state.undoHead,
+    undoList: state.undoList ? [...state.undoList] : undefined,
+    lastChange: state.lastChange
+      ? { ...state.lastChange, keys: [...state.lastChange.keys] }
+      : null,
+    searchState: {
+      ...state.searchState,
+      lastMatches: [...state.searchState.lastMatches],
+    },
+    marks: { ...state.marks },
+    visualStart: state.visualStart ? { ...state.visualStart } : null,
+    lastFindChar: state.lastFindChar ? { ...state.lastFindChar } : null,
+    commandBuffer: [...state.commandBuffer],
+    lineAtCursorEntry: state.lineAtCursorEntry
+      ? { ...state.lineAtCursorEntry }
+      : null,
+    visualBlock: state.visualBlock ? { ...state.visualBlock } : null,
+    insertRepeatKeys: [...state.insertRepeatKeys],
+    globalHistory: [...state.globalHistory],
+    lastVisualSelection: state.lastVisualSelection
+      ? { ...state.lastVisualSelection }
+      : null,
+    options: {
+      ...state.options,
+      backspace: { ...state.options.backspace },
+      filetype: { ...state.options.filetype },
+    },
+  };
   const MAX_TEXT_CHARS = 2_000_000;
   const ensureReasonableSize = () => {
     // Guard against runaway substitutions/globals that explode buffer size.
@@ -198,6 +245,7 @@ export function executeKeystrokeInternal(
     const nextState = executeExCommand(newState, keystroke, {
       executeKeystroke,
       tokenizeKeystrokes,
+      ...(helpers || {}),
     });
     ensureReasonableSize();
     return nextState;
@@ -208,6 +256,11 @@ export function executeKeystrokeInternal(
     (keystroke.startsWith("/") || keystroke.startsWith("?")) &&
     keystroke.endsWith("<CR>")
   ) {
+    if (newState.commandLine !== null) {
+      newState.commandLine = null;
+      newState.mode = "normal";
+    }
+
     const pattern = keystroke.slice(1, -4); // Remove / and <CR>
     const direction = keystroke.startsWith("/") ? "forward" : "backward";
 
@@ -215,13 +268,10 @@ export function executeKeystrokeInternal(
     newState.searchState.direction = direction;
     newState.searchState.allowWrap = true;
 
-    // Include a match at the cursor position when initiating a search, so
-    // `/hello` while on "hello" lands on the current word instead of skipping
-    // to the next occurrence.
+    // In vim, forward search `/pattern` finds the next match AFTER cursor
+    // position, skipping any match at the current cursor.
     const searchStartCol =
-      direction === "forward"
-        ? Math.max(-1, newState.cursorCol - 1)
-        : newState.cursorCol + 1;
+      direction === "forward" ? newState.cursorCol : newState.cursorCol + 1;
 
     let matches = performSearch(
       newState.lines,
@@ -267,7 +317,7 @@ export function executeKeystrokeInternal(
   ) {
     let tempState = newState;
     for (const ch of keystroke.split("")) {
-      tempState = executeKeystroke(tempState, ch);
+      tempState = executeKeystroke(tempState, ch, helpers);
     }
     return tempState;
   }
@@ -299,8 +349,12 @@ export function executeKeystrokeInternal(
   }
 }
 
-export function executeKeystroke(state: VimState, keystroke: string): VimState {
-  return executeKeystrokeInternal(state, keystroke);
+export function executeKeystroke(
+  state: VimState,
+  keystroke: string,
+  helpers?: ExCommandHelpers
+): VimState {
+  return executeKeystrokeInternal(state, keystroke, helpers);
 }
 
 export function tokenizeKeystrokes(
@@ -312,6 +366,30 @@ export function tokenizeKeystrokes(
 
   while (i < keystrokes.length) {
     if (tokens.length >= maxTokens) break;
+
+    // Bundle full Ex or search commands that end with <CR>/<Enter>
+    if (
+      keystrokes[i] === ":" ||
+      keystrokes[i] === "/" ||
+      keystrokes[i] === "?"
+    ) {
+      const slice = keystrokes.slice(i);
+      const crIdx = slice.indexOf("<CR>");
+      const enterIdx = slice.indexOf("<Enter>");
+      const endIdx =
+        crIdx !== -1 ? crIdx + 4 : enterIdx !== -1 ? enterIdx + 7 : -1;
+      if (endIdx !== -1) {
+        tokens.push(keystrokes.slice(i, i + endIdx));
+        i += endIdx;
+        continue;
+      }
+    }
+
+    if (keystrokes[i] === "$") {
+      tokens.push("$");
+      i += 1;
+      continue;
+    }
 
     // Combine find/till motions with their target character (f,F,t,T),
     // but avoid swallowing special-key sequences like <Esc>.
@@ -349,8 +427,16 @@ export function formatToken(token: string): string {
 }
 
 export function normalizeText(text: string): string {
-  // Preserve trailing spaces but normalize newlines and drop a single trailing \n
-  return text.replace(/\r\n/g, "\n").replace(/\n$/, "");
+  // Normalize newlines, trim trailing whitespace per line, then drop trailing empty lines
+  const normalizedNewlines = text.replace(/\r\n/g, "\n");
+  const lines = normalizedNewlines
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""));
+  // Drop trailing empty lines for more robust parity comparison
+  while (lines.length > 1 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines.join("\n");
 }
 
 export function countKeystrokes(keystrokes: string): number {

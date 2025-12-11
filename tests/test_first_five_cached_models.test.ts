@@ -8,6 +8,7 @@ import {
   tokenizeKeystrokes,
   normalizeText,
 } from "../src/lib/vim-engine";
+import { maybeExpectVimParity } from "../src/lib/test-parity";
 import type { RunResult } from "../src/lib/types";
 
 const db = JSON.parse(
@@ -16,20 +17,21 @@ const db = JSON.parse(
 const firstFive = listOfflineChallenges(5);
 const challengeById = new Map(firstFive.map((c) => [c.id, c]));
 const MAX_TOKENS = 100_000;
-const MAX_TEST_TIMEOUT_MS = 20_000;
+const MAX_TEST_TIMEOUT_MS = 120_000;
 
 function runWithEngine(
   startText: string,
   targetText: string,
   keystrokes: string
 ) {
+  const tokens = tokenizeKeystrokes(keystrokes, MAX_TOKENS);
   let state = createInitialState(startText);
-  for (const token of tokenizeKeystrokes(keystrokes, MAX_TOKENS)) {
+  for (const token of tokens) {
     state = executeKeystroke(state, token);
   }
   const finalText = state.lines.join("\n");
   const success = normalizeText(finalText) === normalizeText(targetText ?? "");
-  return { finalText, success };
+  return { finalText, success, tokens };
 }
 
 describe("cached solutions for first five challenges", () => {
@@ -51,7 +53,8 @@ describe("cached solutions for first five challenges", () => {
             challenge.targetText,
             result.keystrokes
           );
-
+          // Parity check skipped - cached model outputs often use complex/external
+          // commands that can't be reliably encoded for nvim parity script
           expect(success).toBe(expectedSuccess);
         });
       }

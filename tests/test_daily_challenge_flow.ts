@@ -11,6 +11,7 @@ import {
   tokenizeKeystrokes,
   normalizeText,
 } from "./src/lib/vim-engine";
+import { maybeExpectVimParity } from "./src/lib/test-parity";
 import { store } from "./src/lib/store";
 import dbData from "./data/db.json";
 
@@ -103,6 +104,13 @@ async function testVimSimulator(
   const normalizedFinal = normalizeText(finalText);
   const normalizedTarget = normalizeText(expectedTarget);
   const success = normalizedFinal === normalizedTarget;
+
+  maybeExpectVimParity({
+    startText,
+    expectedText: expectedTarget,
+    tokens,
+    timeoutMs: MAX_TEST_TIMEOUT_MS,
+  });
 
   if (!success) {
     console.log(`  ❌ FAIL: Output does not match`);

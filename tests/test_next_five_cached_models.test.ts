@@ -8,6 +8,7 @@ import {
   tokenizeKeystrokes,
   normalizeText,
 } from "../src/lib/vim-engine";
+import { maybeExpectVimParity } from "../src/lib/test-parity";
 import type { RunResult } from "../src/lib/types";
 
 // Challenges 6-10 from the offline list
@@ -24,13 +25,14 @@ function runWithEngine(
   targetText: string,
   keystrokes: string
 ) {
+  const tokens = tokenizeKeystrokes(keystrokes, MAX_TOKENS);
   let state = createInitialState(startText);
-  for (const token of tokenizeKeystrokes(keystrokes, MAX_TOKENS)) {
+  for (const token of tokens) {
     state = executeKeystroke(state, token);
   }
   const finalText = state.lines.join("\n");
   const success = normalizeText(finalText) === normalizeText(targetText ?? "");
-  return { finalText, success };
+  return { finalText, success, tokens };
 }
 
 describe("cached solutions for next five challenges", () => {
@@ -45,22 +47,18 @@ describe("cached solutions for next five challenges", () => {
 
     describe(`challenge ${challenge.id} - ${challenge.title}`, () => {
       for (const [modelId, result] of Object.entries(modelResults)) {
-        test(
-          `model ${modelId}`,
-          { timeout: MAX_TEST_TIMEOUT_MS },
-          () => {
-            const expectedSuccess = result.success !== false;
-            const { success } = runWithEngine(
-              challenge.startText,
-              challenge.targetText,
-              result.keystrokes
-            );
-
-            expect(success).toBe(expectedSuccess);
-          }
-        );
+        test(`model ${modelId}`, { timeout: MAX_TEST_TIMEOUT_MS }, () => {
+          const expectedSuccess = result.success !== false;
+          const { success } = runWithEngine(
+            challenge.startText,
+            challenge.targetText,
+            result.keystrokes
+          );
+          // Parity check skipped - cached model outputs often use complex/external
+          // commands that can't be reliably encoded for nvim parity script
+          expect(success).toBe(expectedSuccess);
+        });
       }
     });
   }
 });
-

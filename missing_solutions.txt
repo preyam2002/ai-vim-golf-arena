@@ -1,0 +1,81 @@
+Checking for challenges without solutions...
+
+Found 38 challenges in db.json (cachedChallenges) without solutions:
+- 9v00672c1db90000000005ba (Fix the git merge conflicts)
+- 9v00671803aa000000000555 (Replace markdown sections with numbering)
+- 9v0067255515000000000597 (Nested JSON Flattener)
+- 9v006722bece000000000576 (The Fibonacci Spacer)
+- 9v0067006cf50000000004d1 (Replace csv column if it&#39;s not empty)
+- 9v00670015fe0000000004b1 (Convert plain text into a markdown table)
+- 9v006705493c000000000513 (Change class fields from snake case to camel case)
+- 9v0067056336000000000514 (Change class fields from camel case to snake case)
+- 9v0067037b1c0000000004f3 (Reorganize Pokémon)
+- 9v0066fbf17000000000042c (CaN yOuR ViM dO ThAt? #1)
+- 9v0066fe482500000000048f (Change readonly files)
+- 9v0066f4e39400000000040b (Append leading hyphen count to each line)
+- 9v0066fde7b000000000046f (extract struct tag in go)
+- 9v0066fd18cf00000000044d (CaN yOuR ViM dO ThAt? #2)
+- 9v0066d89856000000000388 (Fix timezone format)
+- 9v0066dd4c360000000003c9 (Markdown Blog Editing)
+- 9v0066daede50000000003a8 (Word completion)
+- 9v0066d8266e000000000367 (Search different SQL column with similar where clause)
+- 9v0066f44ec20000000003ea (Move list of uuids into a SQL query)
+- 9v006694339a0000000002e2 (Rearrange array to one line)
+- 9v0066c85bd8000000000324 (Move to corresponding lines)
+- 9v00668dd8a80000000002c1 (Copy punctuation)
+- 9v0066cbb6a1000000000345 (Remove adjacent duplicates)
+- 9v00669b3ff1000000000303 (Rearrange array to single level)
+- 9v00668b48dc00000000027f (Column wise pasting)
+- 9v006661427f00000000027a (Case matching substitution)
+- 9v006669bab200000000027d (Resolve the spreadsheet)
+- 9v00668c77cf0000000002a0 (Change LaTex itemizations formats)
+- 9v00666fa2e300000000027e (Deleting text)
+- 9v006652ccab000000000276 (String decompression)
+- 9v00664f0099000000000275 (Reverse even lines)
+- 9v00665943dc000000000278 (Hex to binary)
+- 9v00665bf61b000000000279 (Define Gray code states)
+- 9v0066567c28000000000277 (Count words)
+- 9v006637d03a00000000026f (Find anomalies)
+- 9v00663b9c09000000000271 (Evil Numbers)
+- 9v00662cd3cb00000000026d (Coordinate extraction)
+- 9v00663ab20e000000000270 (Mirror  image)
+
+Found 38 challenges in popular-challenges.json without solutions:
+- 9v00672c1db90000000005ba
+- 9v00671803aa000000000555
+- 9v0067255515000000000597
+- 9v006722bece000000000576
+- 9v0067006cf50000000004d1
+- 9v00670015fe0000000004b1
+- 9v006705493c000000000513
+- 9v0067056336000000000514
+- 9v0067037b1c0000000004f3
+- 9v0066fbf17000000000042c
+- 9v0066fe482500000000048f
+- 9v0066f4e39400000000040b
+- 9v0066fde7b000000000046f
+- 9v0066fd18cf00000000044d
+- 9v0066d89856000000000388
+- 9v0066dd4c360000000003c9
+- 9v0066daede50000000003a8
+- 9v0066d8266e000000000367
+- 9v0066f44ec20000000003ea
+- 9v006694339a0000000002e2
+- 9v0066c85bd8000000000324
+- 9v00668dd8a80000000002c1
+- 9v0066cbb6a1000000000345
+- 9v00669b3ff1000000000303
+- 9v00668b48dc00000000027f
+- 9v006661427f00000000027a
+- 9v006669bab200000000027d
+- 9v00668c77cf0000000002a0
+- 9v00666fa2e300000000027e
+- 9v006652ccab000000000276
+- 9v00664f0099000000000275
+- 9v00665943dc000000000278
+- 9v00665bf61b000000000279
+- 9v0066567c28000000000277
+- 9v006637d03a00000000026f
+- 9v00663b9c09000000000271
+- 9v00662cd3cb00000000026d
+- 9v00663ab20e000000000270

@@ -1,8 +1,9 @@
-const {
+import {
   createInitialState,
   executeKeystroke,
   extractKeystroke,
-} = require("./src/lib/vim-engine");
+} from "../src/lib/vim-engine";
+import { runVimParity } from "../src/lib/vim-parity";
 
 // Mock VimState interface since we can't import type easily with require in ts-node without setup
 // We'll just use any for now or define a compatible interface
@@ -91,6 +92,23 @@ function runSimulation(chunks: string[], label: string) {
   console.log("Steps:", sim.steps.length);
   console.log("Final CommandLine:", sim.vimState.commandLine);
   console.log("Final Text:", sim.vimState.lines.join("\n"));
+  console.log("Final CommandLine:", sim.vimState.commandLine);
+  console.log("Final Text:", sim.vimState.lines.join("\n"));
+
+  // Parity Check (compare final result of full stream against Nvim)
+  console.log("Verifying Parity...");
+  const parityRes = runVimParity({
+    startText: startText,
+    keystrokes: sim.rawInput,
+  });
+
+  if (parityRes.engineNormalized === parityRes.vimNormalized) {
+    console.log("✅ PARITY MATCH");
+  } else {
+    console.log("❌ PARITY MISMATCH");
+    console.log("Vim:", parityRes.vimNormalized);
+    console.log("Engine:", parityRes.engineNormalized);
+  }
 }
 
 function runTest() {

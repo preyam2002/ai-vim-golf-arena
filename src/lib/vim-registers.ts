@@ -1,3 +1,5 @@
+import { VimState } from "./vim-types";
+
 export function getRegister(state: VimState, register: string): string {
   return state.registers[register] || "";
 }
@@ -6,10 +8,12 @@ export function getRegisterMetadata(
   state: VimState,
   register: string
 ): { isLinewise: boolean; fromDelete?: boolean } {
-  return state.registerMetadata?.[register] || {
-    isLinewise: false,
-    fromDelete: false,
-  };
+  return (
+    state.registerMetadata?.[register] || {
+      isLinewise: false,
+      fromDelete: false,
+    }
+  );
 }
 
 function ensureMetadata(state: VimState) {
@@ -25,20 +29,35 @@ function writeRegister(
   isLinewise: boolean,
   fromDelete: boolean = false
 ) {
-  state.registers[reg] = text;
-  ensureMetadata(state);
-  state.registerMetadata[reg] = { isLinewise, fromDelete };
+  // Uppercase registers append to their lowercase equivalent
+  if (/^[A-Z]$/.test(reg)) {
+    const lower = reg.toLowerCase();
+    const existing = state.registers[lower] || "";
+    state.registers[lower] = existing + text;
+
+    ensureMetadata(state);
+    state.registerMetadata[lower] = {
+      isLinewise: state.registerMetadata[lower]?.isLinewise || isLinewise,
+      fromDelete: state.registerMetadata[lower]?.fromDelete || fromDelete,
+    };
+    return;
+  } else {
+    state.registers[reg] = text;
+    ensureMetadata(state);
+    state.registerMetadata[reg] = { isLinewise, fromDelete };
+  }
 }
 
 function shiftNumberedRegisters(state: VimState) {
+  ensureMetadata(state);
   for (let i = 9; i >= 2; i--) {
-    state.registers[i.toString()] = state.registers[(i - 1).toString()] || "";
-    ensureMetadata(state);
-    state.registerMetadata[i.toString()] =
-      state.registerMetadata[(i - 1).toString()] || {
-        isLinewise: false,
-        fromDelete: false,
-      };
+    const from = (i - 1).toString();
+    const to = i.toString();
+    state.registers[to] = state.registers[from] || "";
+    state.registerMetadata[to] = state.registerMetadata[from] ?? {
+      isLinewise: false,
+      fromDelete: false,
+    };
   }
 }
 
@@ -73,9 +92,6 @@ export function saveDeleteRegister(
 
   // Normalize linewise deletes so subsequent pastes mirror Vim's newline handling.
   if (isLinewise) {
-    if (text.startsWith("\n")) {
-      text = text.slice(1);
-    }
     if (!text.endsWith("\n")) {
       text = `${text}\n`;
     }

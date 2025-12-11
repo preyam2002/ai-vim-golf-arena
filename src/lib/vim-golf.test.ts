@@ -4,6 +4,7 @@ import {
   executeKeystroke,
   tokenizeKeystrokes,
 } from "./vim-engine";
+import { maybeExpectVimParity } from "./test-parity";
 
 function runGolf(initialText: string, keystrokes: string) {
   let state = createInitialState(initialText);
@@ -21,6 +22,11 @@ function runGolfTest(
 ) {
   const actual = runGolf(initialText, keystrokes);
   expect(actual).toBe(expectedText.trimEnd());
+  maybeExpectVimParity({
+    startText: initialText,
+    keystrokes,
+    expectedText: expectedText.trimEnd(),
+  });
 }
 
 describe("vim-golf scenarios", () => {

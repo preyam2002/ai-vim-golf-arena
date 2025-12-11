@@ -31,6 +31,10 @@ function log(msg: string) {
   process.stdout.write(`${msg}\n`);
 }
 
+function sanitize(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
 function buildChallengeMap(): Map<string, Challenge> {
   const map = new Map<string, Challenge>();
   for (const c of staticChallenges) {
@@ -54,6 +58,7 @@ function runRealVim(startText: string, tokens: string[], timeoutMs = 20_000) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vim-parity-"));
   const bufferPath = path.join(tmpDir, "buffer.txt");
   const scriptPath = path.join(tmpDir, "driver.vim");
+  const logPath = path.join(tmpDir, "nvim.log");
 
   fs.writeFileSync(bufferPath, startText, "utf8");
 
@@ -67,30 +72,56 @@ function runRealVim(startText: string, tokens: string[], timeoutMs = 20_000) {
     "set nobackup",
     "set nowritebackup",
     `let g:tokens = json_decode('${tokensJson}')`,
-    "for t in g:tokens",
-    "  call feedkeys(t, 'xt')",
-    "  call feedkeys('', 'x!')",
-    "endfor",
-    `call feedkeys("\\<Esc>:wq!\\<CR>", "xt")`,
-    `call feedkeys('', 'x!')`,
+    "function! RunKeystrokes()",
+    "  for t in g:tokens",
+    "    let l:raw = t",
+    "    if l:raw =~ '^:'",
+    "      let l:cmd = substitute(l:raw[1:], '<CR>', '', 'g')",
+    "      try | silent! execute l:cmd | catch /.*/ | let g:vim_parity_err = v:exception | endtry",
+    "    elseif l:raw =~ '^/' || l:raw =~ '^?'",
+    "      let l:search = substitute(l:raw, '<CR>', '', 'g')",
+    "      try | execute l:search | catch /.*/ | let g:vim_parity_err = v:exception | endtry",
+    "    else",
+    "      let l:keys = replace_termcodes(l:raw, v:true, v:true, v:true)",
+    "      call feedkeys(l:keys, 'nx')",
+    "      silent! execute 'normal! \\<Esc>'",
+    "    endif",
+    "  endfor",
+    "  silent! write | qa!",
+    "endfunction",
   ].join("\n");
 
   fs.writeFileSync(scriptPath, script, "utf8");
 
+  const vimBin = process.env.VIM_BIN || "nvim";
   const proc = spawnSync(
-    "vim",
-    ["-Nu", "NONE", "-n", "-Es", "-S", scriptPath, bufferPath],
+    vimBin,
+    [
+      "--headless",
+      "-u",
+      "NONE",
+      "-n",
+      bufferPath,
+      "-S",
+      scriptPath,
+      "-c",
+      "call RunKeystrokes()",
+    ],
     {
       encoding: "utf8",
       timeout: timeoutMs,
+      env: { ...process.env, NVIM_LOG_FILE: logPath },
     }
   );
 
   let error: string | undefined;
   if (proc.error) {
-    error = `spawn error: ${proc.error.message}`;
+    error = `spawn error (${vimBin}): ${proc.error.message}`;
   } else if (proc.status !== 0) {
-    error = `vim exit ${proc.status}: ${proc.stderr || proc.stdout}`;
+    const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+    error = `${vimBin} exit ${proc.status}: ${
+      proc.stderr || proc.stdout || log
+    }`;
   }
 
   let finalText = "";
@@ -112,12 +143,22 @@ function snippet(text: string): string {
 async function main() {
   const challengeFilter =
     process.env.CHALLENGE_ID?.split(",").map((s) => s.trim()) ?? null;
+  const modelFilter =
+    process.env.MODEL_ID?.split(",").map((s) => s.trim()) ?? null;
   const maxTokens = Number(process.env.MAX_TOKENS || DEFAULT_MAX_TOKENS);
   const skipKeystrokes = Number(
     process.env.SKIP_KEYSTROKES || DEFAULT_SKIP_KEYSTROKES
   );
   const dbPath =
     process.env.DB_PATH || path.join(process.cwd(), "data", "db.json");
+  const saveArtifacts =
+    process.env.SAVE_ARTIFACTS === "1" || process.env.SAVE_ARTIFACTS === "true";
+  const vimTimeoutMs = Number(process.env.VIM_TIMEOUT_MS || 20_000);
+  const artifactsDir =
+    process.env.ARTIFACTS_DIR ||
+    path.join(process.cwd(), "tmp", "vim-parity-artifacts");
+  const debugText =
+    process.env.DEBUG_TEXT === "1" || process.env.DEBUG_TEXT === "true";
 
   const challengeMap = buildChallengeMap();
   const db = JSON.parse(fs.readFileSync(dbPath, "utf8")) as {
@@ -140,6 +181,8 @@ async function main() {
     }
 
     for (const [modelId, result] of Object.entries(models)) {
+      if (modelFilter && !modelFilter.includes(modelId)) continue;
+
       const keystrokes = result.keystrokes || "";
       if (!keystrokes) {
         rows.push({
@@ -173,9 +216,25 @@ async function main() {
       }
 
       const engineText = runEngine(challenge.startText, tokens);
-      const vimResult = runRealVim(challenge.startText, tokens);
+      const vimResult = runRealVim(challenge.startText, tokens, vimTimeoutMs);
 
       if (vimResult.error) {
+        if (saveArtifacts) {
+          const dir = path.join(
+            artifactsDir,
+            sanitize(`${challengeId}-${modelId}-error`)
+          );
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, "start.txt"), challenge.startText);
+          fs.writeFileSync(path.join(dir, "target.txt"), challenge.targetText);
+          fs.writeFileSync(path.join(dir, "keystrokes.txt"), keystrokes);
+          fs.writeFileSync(
+            path.join(dir, "tokens.json"),
+            JSON.stringify(tokens)
+          );
+          fs.writeFileSync(path.join(dir, "engine.txt"), engineText);
+        }
+
         rows.push({
           challengeId,
           modelId,
@@ -203,6 +262,29 @@ async function main() {
           vimMatchesTarget,
         });
       } else {
+        if (saveArtifacts) {
+          const dir = path.join(
+            artifactsDir,
+            sanitize(`${challengeId}-${modelId}-mismatch`)
+          );
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, "start.txt"), challenge.startText);
+          fs.writeFileSync(path.join(dir, "target.txt"), challenge.targetText);
+          fs.writeFileSync(path.join(dir, "keystrokes.txt"), keystrokes);
+          fs.writeFileSync(
+            path.join(dir, "tokens.json"),
+            JSON.stringify(tokens)
+          );
+          fs.writeFileSync(path.join(dir, "engine.txt"), engineText);
+          fs.writeFileSync(path.join(dir, "vim.txt"), vimResult.finalText);
+        }
+
+        if (debugText) {
+          log(
+            `DEBUG ${challengeId} ${modelId}\n--engine--\n${engineText}\n--vim--\n${vimResult.finalText}`
+          );
+        }
+
         rows.push({
           challengeId,
           modelId,

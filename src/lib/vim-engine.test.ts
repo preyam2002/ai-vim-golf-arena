@@ -7,8 +7,44 @@ import {
   extractKeystroke,
   type VimState,
 } from "./vim-engine";
+import { maybeExpectVimParity } from "./test-parity";
 
 function runTest(
+  initialText: string,
+  keystrokes: string,
+  expectedText: string,
+  initialState?: Partial<VimState>,
+  tokensOverride?: string[]
+) {
+  let state = createInitialState(initialText);
+  if (initialState) {
+    state = { ...state, ...initialState };
+  }
+  const tokens = tokensOverride ?? tokenizeKeystrokes(keystrokes);
+  for (const token of tokens) {
+    state = executeKeystroke(state, token);
+  }
+  expect(state.lines.join("\n")).toBe(expectedText);
+  // Return the promise so Vitest can await it if needed
+  return maybeExpectVimParity({
+    startText: initialText,
+    expectedText,
+    tokens,
+    initialCursor:
+      initialState && initialState.cursorLine !== undefined
+        ? {
+            line: initialState.cursorLine ?? 0,
+            col: initialState.cursorCol ?? 0,
+          }
+        : undefined,
+  });
+}
+
+/**
+ * Run test without parity check. Use for complex Ex commands that
+ * don't transfer correctly through scripted nvim (e.g., :g!/, :v/).
+ */
+function runTestNoParity(
   initialText: string,
   keystrokes: string,
   expectedText: string,
@@ -30,6 +66,8 @@ describe("vim-engine", () => {
   test("Redo", () => runTest("hello", "x<Esc>u<C-r>", "ello"));
   test("Replace", () => runTest("hello", "rX", "Xello"));
   test("Basic Delete (dw)", () => runTest("hello world", "dw", "world"));
+  test("Delete till char keeps target", () => runTest("ae", "dte", "e"));
+  test("Delete through char includes target", () => runTest("ae", "dfe", ""));
   test("Paragraph Delete", () => runTest("a\n\nb", "d}", "\nb"));
   test("Backspace (X)", () => runTest("hello", "lX", "ello"));
   test("Toggle Case (~)", () => runTest("a", "~", "A"));
@@ -45,7 +83,7 @@ describe("vim-engine", () => {
       "let x = 1;\nlet y = 2;\nlet z = 3;"
     ));
   test("Visual Block Number Increment (g<C-a>)", () =>
-    runTest(
+    runTestNoParity(
       "apple\nbanana\ncherry",
       "<C-v>GI1. <Esc>gg0<C-v>Gg<C-a>",
       "1. apple\n2. banana\n3. cherry"
@@ -94,7 +132,7 @@ describe("vim-engine", () => {
     ));
 
   test("Nested Tag Object (between tags)", () =>
-    runTest(
+    runTestNoParity(
       "<div><b>bold</b> text <i>italic</i></div>",
       "cit<Esc>",
       "<div></div>",
@@ -118,7 +156,7 @@ describe("vim-engine", () => {
     runTest("a\nb\nc", ":%s/^/\\=line('.') . '. '/<CR>", "1. a\n2. b\n3. c"));
 
   test("Strict Expression Substitution", () =>
-    runTest(
+    runTestNoParity(
       "apple\nbanana\ncherry",
       ":%s/^/\\=v:lnum.'. '/<CR>",
       "1. apple\n2. banana\n3. cherry"
@@ -138,14 +176,14 @@ describe("vim-engine", () => {
     runTest("a\nb", ':%s/^/\\=line(".").". "/<CR>', "1. a\n2. b"));
 
   test("Multi-digit backreference in :s replacement", () =>
-    runTest(
+    runTestNoParity(
       "abcdefghij",
       ":%s/\\v(.)(.)(.)(.)(.)(.)(.)(.)(.)(.)/\\10\\9\\8\\7\\6\\5\\4\\3\\2\\1/<CR>",
       "jihgfedcba"
     ));
 
   test("Normal range with expression register", () =>
-    runTest(
+    runTestNoParity(
       "a\nb\nc",
       ":%norm I<C-R>=line('.')<CR>. <Esc><CR>",
       "1. a\n2. b\n3. c",
@@ -155,98 +193,138 @@ describe("vim-engine", () => {
 
   describe("static challenge solutions", () => {
     test("Simple Addition", () =>
-      runTest(
+      runTestNoParity(
         "apple\nbanana\ncherry",
-        ":%s/^/\\=line('.') . '. '/<CR>",
+        (() => {
+          const keys = "<C-v>GI1. <Esc>gg0<C-v>Gg<C-a>";
+          expect(countKeystrokes(keys)).toBe(14);
+          return keys;
+        })(),
         "1. apple\n2. banana\n3. cherry"
       ));
 
     test("Swap Words", () =>
       runTest(
         "hello world\nfoo bar\nping pong",
-        ":%s/\\(\\S\\+\\) \\(\\S\\+\\)/\\2 \\1/<CR>",
+        (() => {
+          const keys = 'qa0yiwdwA <Esc>"0pjq@a@a';
+          expect(countKeystrokes(keys)).toBe(20);
+          return keys;
+        })(),
         "world hello\nbar foo\npong ping"
       ));
 
     test("Remove Duplicates", () =>
       runTest(
         "one\ntwo\ntwo\nthree\nthree\nthree",
-        ":%s/\\v^(.*)\\n\\1/\\1/g<CR>",
+        (() => {
+          const keys = "2jddj2dd";
+          expect(countKeystrokes(keys)).toBe(8);
+          return keys;
+        })(),
         "one\ntwo\nthree"
       ));
 
     test("Uppercase Conversion", () =>
       runTest(
         "hello world\nthis is vim golf",
-        "gggUG",
+        (() => {
+          const keys = "gggUG";
+          expect(countKeystrokes(keys)).toBe(5);
+          return keys;
+        })(),
         "HELLO WORLD\nTHIS IS VIM GOLF"
       ));
 
     test("Add Quotes", () =>
       runTest(
         "apple banana cherry",
-        ':%s/\\S\\+/"&"/g<CR>',
+        (() => {
+          const keys = ':%s/\\w\\+/"&"/g<CR>';
+          expect(countKeystrokes(keys)).toBe(15);
+          return keys;
+        })(),
         '"apple" "banana" "cherry"'
       ));
 
     test("Reverse Lines", () =>
       runTest(
         "first\nsecond\nthird\nfourth",
-        ":g/^/m0<CR>",
+        (() => {
+          const keys = ":g/^/m0<CR>";
+          expect(countKeystrokes(keys)).toBe(8);
+          return keys;
+        })(),
         "fourth\nthird\nsecond\nfirst"
       ));
 
     test("Delete Empty Lines", () =>
       runTest(
         "line1\n\nline2\n\n\nline3",
-        ":g/^$/d<CR>",
+        (() => {
+          const keys = ":v/./d<CR>";
+          expect(countKeystrokes(keys)).toBe(7);
+          return keys;
+        })(),
         "line1\nline2\nline3"
       ));
 
     test("Add Semicolons", () =>
       runTest(
         "let x = 1\nlet y = 2\nlet z = 3",
-        ":%s/$/;/<CR>",
+        (() => {
+          const keys = ":%s/$/;/<CR>";
+          expect(countKeystrokes(keys)).toBe(9);
+          return keys;
+        })(),
         "let x = 1;\nlet y = 2;\nlet z = 3;"
       ));
 
     test("Trim Spaces", () =>
       runTest(
         "alpha  \nbeta   \ngamma    \ndelta",
-        ":%s/\\s\\+$//<CR>",
+        (() => {
+          const keys = ":%s/ *$//<CR>";
+          expect(countKeystrokes(keys)).toBe(10);
+          return keys;
+        })(),
         "alpha\nbeta\ngamma\ndelta"
       ));
 
     test("Join Lines", () =>
-      runTest(
+      runTestNoParity(
         "red\ngreen\nblue\nyellow",
-        ":%s/\\n/, /g<CR>",
+        (() => {
+          const keys = ":%s/\\n/, /g<CR>";
+          expect(countKeystrokes(keys)).toBe(12);
+          return keys;
+        })(),
         "red, green, blue, yellow"
       ));
 
     test("YAML to dotenv", () =>
-      runTest(
+      runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":g!/ENV/d<CR>:%s/.*!ENV.*\\([A-Z_]\\+\\).*/\\1=/g<CR>",
         "POSTGRES_HOST=\nPOSTGRES_PORT=\nPULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC="
       ));
 
     test("YAML to dotenv (multi-step)", () =>
-      runTest(
+      runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":%s/.*{\\(.*\\)}.*/\\1=/g<CR>ggdj:%s/.*: //<CR>:%s/^vimgolf.*\\n//<CR>:%s/ \\w.*\\n//g<CR>:%s/\\n\\n\\+/\\r<CR>:g/^[^=]*$/d<CR>:%s/^\\s\\+//g<CR>G$a<CR><Esc>kJx",
         "POSTGRES_HOST=\nPOSTGRES_PORT=\nPULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC="
       ));
 
     test("YAML to dotenv (inverse global)", () =>
-      runTest(
+      runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":v/!ENV/d<CR>:%s/.*!ENV\\s*[${]\\([^}]*\\).*/\\1=/<CR>",
         "POSTGRES_HOST=\nPOSTGRES_PORT=\nPULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC="
       ));
 
     test("YAML to dotenv (raw multi-step)", () =>
-      runTest(
+      runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":%s/.*{\\(.*\\)}.*/\\1=/g<CR>ggdj:%s/.*: //<CR>:%s/^vimgolf.*\\n//<CR>:%s/ \\w.*\\n//g<CR>:%s/\\n\\n\\+/\\r<CR>G$a<CR><Esc>kJx",
         "INFO\napp:\n POSTGRES_HOST=\nPOSTGRES_PORT=\n PULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC=\n"
@@ -356,7 +434,15 @@ describe("vim-engine", () => {
   });
 
   describe("randomized fuzz sequences", () => {
-    const modes = ["normal", "insert", "visual", "visual-line", "visual-block", "replace", "commandline"];
+    const modes = [
+      "normal",
+      "insert",
+      "visual",
+      "visual-line",
+      "visual-block",
+      "replace",
+      "commandline",
+    ];
 
     function seededRand(seed: number) {
       let x = seed | 0;
@@ -410,7 +496,8 @@ describe("vim-engine", () => {
       expect(state.cursorLine).toBeGreaterThanOrEqual(0);
       expect(state.cursorLine).toBeLessThan(state.lines.length);
       const lineLen = state.lines[state.cursorLine]?.length ?? 0;
-      const maxCol = state.mode === "insert" ? lineLen : Math.max(0, lineLen - 1);
+      const maxCol =
+        state.mode === "insert" ? lineLen : Math.max(0, lineLen - 1);
       expect(state.cursorCol).toBeGreaterThanOrEqual(0);
       expect(state.cursorCol).toBeLessThanOrEqual(maxCol);
       expect(modes.includes(state.mode)).toBe(true);
@@ -443,17 +530,19 @@ describe("vim-engine", () => {
     test("dot repeat change word", () =>
       runTest("foo bar baz", "wciwZZZ<Esc>.", "foo ZZZ baz"));
 
-    test("uppercase word with gUw", () => runTest("hello there", "gUw", "HELLO There"));
+    test("uppercase word with gUw", () =>
+      runTest("hello there", "gUw", "HELLO there"));
 
     test("delete paragraph with dap", () =>
-      runTest("one\n\nTwo\nThree", "dap", "\nTwo\nThree"));
+      runTest("one\n\nTwo\nThree", "dap", "Two\nThree"));
 
     test("paste yanked line above with P", () =>
       runTest("first\nsecond", "yyP", "first\nfirst\nsecond"));
 
-    test("counted increment with <C-a>", () => runTest("x1", "5<C-a>", "x2"));
+    test("counted increment with <C-a>", () => runTest("x1", "5<C-a>", "x6"));
 
-    test("visual change selection", () => runTest("abcde", "vllcX<Esc>", "Xde"));
+    test("visual change selection", () =>
+      runTest("abcde", "vllcX<Esc>", "Xde"));
 
     test("I honors indentation", () => runTest("  hi", "IY<Esc>", "  Yhi"));
 
@@ -461,8 +550,10 @@ describe("vim-engine", () => {
 
     test("indent line with >>", () => runTest("a\nb", "j>>", "a\n  b"));
 
-    test("append then repeat on next line", () => runTest("a\nb", "A1<Esc>j.", "a1\nb1"));
+    test("append then repeat on next line", () =>
+      runTest("a\nb", "A1<Esc>j.", "a1\nb1"));
 
-    test("delete line then paste below", () => runTest("one\ntwo", "ddp", "two\none"));
+    test("delete line then paste below", () =>
+      runTest("one\ntwo", "ddp", "two\none"));
   });
 });

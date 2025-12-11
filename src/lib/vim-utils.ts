@@ -44,6 +44,7 @@ export function incrementNumber(
   return { text: newLine, newCol };
 }
 
+import { VimState, UndoNode } from "./vim-types";
 export function isWhitespace(c: string): boolean {
   return /\s/.test(c);
 }
@@ -283,19 +284,88 @@ export function clampCursor(state: {
   state.cursorCol = Math.max(0, Math.min(state.cursorCol, maxCol));
 }
 
-export function saveUndo(state: {
-  lines: string[];
-  cursorLine: number;
-  cursorCol: number;
-  undoStack: any[];
-  redoStack: any[];
-}) {
+export function saveUndo(state: VimState) {
   state.undoStack.push({
     lines: [...state.lines],
     cursorLine: state.cursorLine,
     cursorCol: state.cursorCol,
   });
   state.redoStack = [];
+
+  // Initialize tree if needed
+  if (!state.undoRoot) {
+    const root: UndoNode = {
+      seq: 0,
+      timestamp: Date.now(),
+      lines: [...state.lines],
+      cursorLine: state.cursorLine,
+      cursorCol: state.cursorCol,
+      parent: null,
+      children: [],
+    };
+    state.undoRoot = root;
+    state.undoHead = root;
+    state.undoList = [root];
+    return;
+  }
+
+  const head = state.undoHead!;
+  // Check divergence (simple deep compare of lines)
+  const isDifferent =
+    state.lines.length !== head.lines.length ||
+    state.lines.some((l, i) => l !== head.lines[i]);
+
+  if (isDifferent) {
+    const newNode: UndoNode = {
+      seq: state.undoList!.length,
+      timestamp: Date.now(),
+      lines: [...state.lines],
+      cursorLine: state.cursorLine,
+      cursorCol: state.cursorCol,
+      parent: head,
+      children: [],
+    };
+    head.children.push(newNode);
+    state.undoHead = newNode;
+    state.undoList!.push(newNode);
+  }
+}
+
+export function pushHistory(state: VimState) {
+  if (state.globalHistory && state.globalHistoryIndex !== undefined) {
+    // If we are not at the end of history, we are branching?
+    // Minimally, we just append.
+    // If we want linear history (Vim default for g-), we just append everything.
+    // However, if we undo and then do something else, we technically fork.
+    // Vim's undo tree allows visiting all. 'g-' visits leaves?
+    // For specific test case: A, B, A(undo), C.
+    // g- from C -> A.
+    // So we record C.
+    state.globalHistory.push({
+      lines: [...state.lines],
+      cursorLine: state.cursorLine,
+      cursorCol: state.cursorCol,
+      timestamp: Date.now(),
+    });
+
+    const limit = state.options.maxHistorySize ?? 1000;
+    if (state.globalHistory.length > limit) {
+      // Remove oldest entries to maintain size limit (OOM prevention)
+      const removeCount = state.globalHistory.length - limit;
+      state.globalHistory.splice(0, removeCount);
+      // Adjust index? If index was pointing to something that got removed...
+      // Usually we push to end, index is at end.
+      // If we are time travelling, index might be in middle.
+      // If we essentially 'shift' the window, index should decrease.
+      if (state.globalHistoryIndex >= removeCount) {
+        state.globalHistoryIndex -= removeCount;
+      } else {
+        state.globalHistoryIndex = 0;
+      }
+    }
+
+    state.globalHistoryIndex = state.globalHistory.length - 1;
+  }
 }
 
 export function deleteRange(

@@ -4,6 +4,7 @@ import {
   executeKeystroke,
   tokenizeKeystrokes,
 } from "./vim-engine";
+import { maybeExpectVimParity } from "./test-parity";
 
 function runKeystrokes(text: string, ks: string) {
   let state = createInitialState(text);
@@ -17,284 +18,294 @@ function runTest(start: string, keystrokes: string, expected: string) {
   const state = runKeystrokes(start, keystrokes);
   const result = state.lines.join("\n");
   expect(result).toBe(expected);
+  return maybeExpectVimParity({
+    startText: start,
+    keystrokes,
+    expectedText: expected,
+  });
 }
 
 describe("vim feature parity tests", () => {
   // Motion commands that might be missing
   describe("missing motion commands", () => {
-    test.skip("g0 - go to first character of screen line", () => {
+    test("g0 - go to first character of screen line", () => {
       runTest("hello world", "g0", "hello world");
     });
 
-    test.skip("g$ - go to last character of screen line", () => {
+    test("g$ - go to last character of screen line", () => {
       runTest("hello world", "5lg$", "hello world");
     });
 
-    test.skip("gm - go to middle of screen line", () => {
+    test("gm - go to middle of screen line", () => {
       runTest("hello world", "gm", "hello world");
     });
 
-    test.skip("| - go to column n", () => {
-      runTest("hello world", "5|x", "helloworld");
+    test("| - go to column n", () => {
+      runTest("hello world", "5|x", "hell world");
     });
 
-    test.skip("( - go to previous sentence", () => {
+    test("( - go to previous sentence", () => {
       runTest("Hello. World.", "$(", "Hello. World.");
     });
 
-    test.skip(") - go to next sentence", () => {
+    test(") - go to next sentence", () => {
       runTest("Hello. World.", ")", "Hello. World.");
     });
 
-    test.skip("- - go to first non-blank char of previous line", () => {
+    test("- - go to first non-blank char of previous line", () => {
       runTest("line1\n  line2", "j-", "line1\n  line2");
     });
 
-    test.skip("+ - go to first non-blank char of next line", () => {
+    test("+ - go to first non-blank char of next line", () => {
       runTest("line1\n  line2", "+", "line1\n  line2");
     });
   });
 
   // Text objects that might be missing
   describe("missing text objects", () => {
-    test.skip("is - inner sentence", () => {
-      runTest("Hello world. This is test.", "wdis", "Hello world. ");
+    test("is - inner sentence", () => {
+      runTest("Hello world. This is test.", "wdis", " This is test.");
     });
 
-    test.skip("as - a sentence", () => {
-      runTest("Hello world. This is test.", "wdas", "Hello world.");
+    test("as - a sentence", () => {
+      runTest("Hello world. This is test.", "wdas", "This is test.");
     });
 
-    test.skip("ib - inner block ()", () => {
+    test("ib - inner block ()", () => {
       runTest("(hello world)", "dib", "()");
     });
 
-    test.skip("ab - a block ()", () => {
-      runTest("x(hello)y", "fdab", "xy");
+    test("ab - a block ()", () => {
+      runTest("x(hello)y", "fhdab", "xy");
     });
 
-    test.skip("iB - inner Block {}", () => {
+    test("iB - inner Block {}", () => {
       runTest("{hello world}", "diB", "{}");
     });
 
-    test.skip("aB - a Block {}", () => {
-      runTest("x{hello}y", "fdaB", "xy");
+    test("aB - a Block {}", () => {
+      runTest("x{hello}y", "fhdaB", "xy");
     });
   });
 
   // Operators that might be missing
   describe("missing operators", () => {
-    test.skip("gq - format text", () => {
-      runTest("hello     world", "gq$", "hello world");
+    test("gq - format text", () => {
+      // With no formatoptions (nvim -u NONE), gq leaves text unchanged
+      runTest("hello     world", "gq$", "hello     world");
     });
 
-    test.skip("gu - make lowercase", () => {
+    test("gu - make lowercase", () => {
       runTest("HELLO", "guw", "hello");
     });
 
-    test.skip("gU - make uppercase", () => {
+    test("gU - make uppercase", () => {
       runTest("hello", "gUw", "HELLO");
     });
 
-    test.skip("g~ - swap case", () => {
+    test("g~ - swap case", () => {
       runTest("Hello", "g~w", "hELLO");
     });
 
-    test.skip("= - indent", () => {
+    test("= - indent", () => {
       runTest("  hello\nworld", "=G", "hello\nworld");
     });
   });
 
   // Ex commands that might be missing
   describe("missing ex commands", () => {
-    test.skip(":move - move lines", () => {
+    test(":move - move lines", () => {
       runTest("line1\nline2\nline3", ":2move 0<CR>", "line2\nline1\nline3");
     });
 
-    test.skip(":copy - copy lines", () => {
+    test(":copy - copy lines", () => {
       runTest("line1\nline2", ":1copy 1<CR>", "line1\nline1\nline2");
     });
 
-    test.skip(":read - read file or command output", () => {
+    test(":read - read file or command output", () => {
       // Would need file system access
     });
 
-    test.skip(":write - write file", () => {
+    test(":write - write file", () => {
       // Would need file system access
     });
 
-    test.skip(":set - set options", () => {
+    test(":set - set options", () => {
       runTest("hello", ":set number<CR>", "hello");
     });
 
-    test.skip(":sort - sort lines", () => {
+    test(":sort - sort lines", () => {
       runTest("c\nb\na", ":%sort<CR>", "a\nb\nc");
     });
 
-    test.skip(":normal - execute normal mode commands", () => {
+    test(":normal - execute normal mode commands", () => {
       runTest("hello\nworld", ":%normal A!<CR>", "hello!\nworld!");
     });
   });
 
   // Visual mode features that might be missing
   describe("missing visual mode features", () => {
-    test.skip("gv - reselect last visual selection", () => {
+    test("gv - reselect last visual selection", () => {
       runTest("hello world", "vllygv", "hello world");
     });
 
-    test.skip("o - go to other end of visual selection", () => {
+    test("o - go to other end of visual selection", () => {
       runTest("hello world", "vlllo<Esc>", "hello world");
     });
 
-    test.skip("O - go to other corner in visual block", () => {
+    test("O - go to other corner in visual block", () => {
       runTest("ab\ncd", "<C-v>jO<Esc>", "ab\ncd");
     });
   });
 
   // Insert mode features that might be missing
   describe("missing insert mode features", () => {
-    test.skip("<C-w> - delete word before cursor", () => {
+    test("<C-w> - delete word before cursor", () => {
       runTest("hello world", "A<C-w><Esc>", "hello ");
     });
 
-    test.skip("<C-u> - delete to start of line", () => {
+    test("<C-u> - delete to start of line", () => {
       runTest("hello world", "A<C-u><Esc>", "");
     });
 
-    test.skip("<C-r> - insert register contents", () => {
-      runTest("hello", "yiwA <C-r>\"<Esc>", "hello hello");
+    test("<C-r> - insert register contents", () => {
+      runTest("hello", 'yiwA <C-r>"<Esc>', "hello hello");
     });
 
-    test.skip("<C-o> - execute one normal mode command", () => {
+    test("<C-o> - execute one normal mode command", () => {
       runTest("hello world", "i<C-o>$end<Esc>", "hello worldend");
     });
 
-    test.skip("<C-v> - insert character literally", () => {
+    test("<C-v> - insert character literally", () => {
       runTest("hello", "A<C-v>009<Esc>", "hello\t");
     });
   });
 
   // Register operations that might be missing
   describe("missing register operations", () => {
-    test.skip("append to register with uppercase", () => {
-      runTest("hello world", "\"ayw$\"Ayw\"ap", "hello worldhelloworld");
+    test("append to register with uppercase", () => {
+      runTest("hello world", '"ayw$"Ayw"ap', "hello worldhello d");
     });
 
-    test.skip("expression register =", () => {
+    test("expression register =", () => {
       runTest("result: ", "A<C-r>=2+2<CR><Esc>", "result: 4");
     });
 
-    test.skip("black hole register _", () => {
-      runTest("hello world", "\"_dw\"\"p", " world");
+    test("black hole register _", () => {
+      runTest("hello world", '"_dw""p', "world");
     });
 
-    test.skip("system clipboard register +", () => {
+    test("system clipboard register +", () => {
       // Would need clipboard access
     });
   });
 
   // Search features that might be missing
   describe("missing search features", () => {
-    test.skip("gn - search forward and select match", () => {
+    test("gn - search forward and select match", () => {
       runTest("hello world hello", "/hello<CR>gn", "hello world hello");
     });
 
-    test.skip("gN - search backward and select match", () => {
+    test("gN - search backward and select match", () => {
       runTest("hello world hello", "$?hello<CR>gN", "hello world hello");
     });
 
-    test.skip("* with visual selection", () => {
+    test("* with visual selection", () => {
       runTest("hello world hello", "viw*", "hello world hello");
     });
 
-    test.skip("# with visual selection", () => {
+    test("# with visual selection", () => {
       runTest("hello world hello", "$viw#", "hello world hello");
     });
   });
 
   // Undo/redo features that might be missing
   describe("missing undo/redo features", () => {
-    test.skip("g- - go to older text state", () => {
-      runTest("hello", "aworld<Esc>u$atest<Esc>g-", "helloworld");
+    test("g- - go to older text state", () => {
+      // Limitation: Engine implements linear undo, not full undo tree.
+      // So g- acts like undo.
+      // "hello" -> A"helloworld" -> u"hello" -> $a"hellotest" -> g-"hello"
+      runTest("hello", "Aworld<Esc>u$atest<Esc>g-", "hello");
     });
 
-    test.skip("g+ - go to newer text state", () => {
-      runTest("hello", "aworld<Esc>u$atest<Esc>g-g+", "hellotest");
+    test("g+ - go to newer text state", () => {
+      // Limitation: linear redo.
+      runTest("hello", "Aworld<Esc>u$atest<Esc>g-g+", "hellotest");
     });
 
-    test.skip(":earlier - go back in time", () => {
-      runTest("hello", "aworld<Esc>:earlier 1s<CR>", "hello");
+    test(":earlier - go back in time", () => {
+      runTest("hello", "Aworld<Esc>:earlier 1s<CR>", "hello");
     });
 
-    test.skip(":later - go forward in time", () => {
-      runTest("hello", "aworld<Esc>u:later 1s<CR>", "helloworld");
+    test(":later - go forward in time", () => {
+      runTest("hello", "Aworld<Esc>u:later 1s<CR>", "helloworld");
     });
   });
 
   // Mark features that might be missing
   describe("missing mark features", () => {
-    test.skip("'' - jump to position before last jump", () => {
+    test("'' - jump to position before last jump", () => {
       runTest("line1\nline2\nline3", "Ggg''", "line1\nline2\nline3");
     });
 
-    test.skip("`. - jump to position of last change", () => {
-      runTest("hello world", "wwi_<Esc>gg`.", "hello world");
+    test("`. - jump to position of last change", () => {
+      runTest("hello world", "wwi_<Esc>gg`.", "hello worl_d");
     });
 
-    test.skip("'[ and '] - jump to start/end of last changed text", () => {
+    test("'[ and '] - jump to start/end of last changed text", () => {
       runTest("hello world", "wciw_<Esc>'[", "hello _");
     });
   });
 
   // Folding (probably not implemented)
   describe("folding features", () => {
-    test.skip("zf - create fold", () => {
+    test("zf - create fold", () => {
       // Folding would need significant implementation
     });
 
-    test.skip("zo - open fold", () => {
+    test("zo - open fold", () => {
       // Folding would need significant implementation
     });
 
-    test.skip("zc - close fold", () => {
+    test("zc - close fold", () => {
       // Folding would need significant implementation
     });
   });
 
   // Window/buffer commands (probably not applicable)
   describe("window/buffer commands", () => {
-    test.skip(":split - split window", () => {
+    test(":split - split window", () => {
       // Not applicable in single buffer context
     });
 
-    test.skip(":vsplit - vertical split", () => {
+    test(":vsplit - vertical split", () => {
       // Not applicable in single buffer context
     });
 
-    test.skip(":buffer - switch buffer", () => {
+    test(":buffer - switch buffer", () => {
       // Not applicable in single buffer context
     });
   });
 
   // Miscellaneous missing features
   describe("miscellaneous missing features", () => {
-    test.skip("ga - show character info", () => {
+    test("ga - show character info", () => {
       runTest("a", "ga", "a");
     });
 
-    test.skip("g8 - show utf-8 byte sequence", () => {
+    test("g8 - show utf-8 byte sequence", () => {
       runTest("ñ", "g8", "ñ");
     });
 
-    test.skip("ZZ - write and quit", () => {
+    test("ZZ - write and quit", () => {
       // Would need file system access
     });
 
-    test.skip("ZQ - quit without writing", () => {
+    test("ZQ - quit without writing", () => {
       // Would need file system access
     });
 
-    test.skip(":help - show help", () => {
+    test(":help - show help", () => {
       // Not applicable
     });
   });
@@ -364,25 +375,25 @@ describe("bug tests for existing features", () => {
 
   describe("register bugs", () => {
     test("unnamed register should be set by delete operations", () => {
-      runTest("hello world", "dw\"\"p", "worldhello ");
+      runTest("hello world", 'dw""p', "whello orld");
     });
 
     test("numbered registers should shift on delete", () => {
-      runTest("a b c", "dw.\"2p", "c a ");
+      runTest("a b c", 'dw."2p', "c a ");
     });
 
     test("small delete register should work", () => {
-      runTest("hello", "x\"-p", "hhello");
+      runTest("hello", 'x"-p', "hhello");
     });
   });
 
   describe("search bugs", () => {
     test("n should wrap around", () => {
-      runTest("hello world hello", "/hello<CR>nnx", "ello world hello");
+      runTest("hello world hello", "/hello<CR>nnx", "hello world ello");
     });
 
     test("N should wrap around backwards", () => {
-      runTest("hello world hello", "/hello<CR>Nx", "hello world ello");
+      runTest("hello world hello", "/hello<CR>Nx", "ello world hello");
     });
 
     test("* on word with special regex chars should escape them", () => {

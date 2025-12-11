@@ -3,7 +3,10 @@ import {
   createInitialState,
   executeKeystroke,
   normalizeText,
+  executeKeystroke,
+  normalizeText,
 } from "../src/lib/vim-engine";
+import { runVimParity } from "../src/lib/vim-parity";
 
 const startText = `<<<<<<< HEAD
 def calculate_total(items):
@@ -177,4 +180,19 @@ try {
   console.error("  Lines:", state.lines.slice(0, 5));
   console.error("  Mode:", state.mode);
   console.error("  Cursor:", state.cursorLine, state.cursorCol);
+}
+
+// Parity Check
+console.log("\n=== Checking Parity ===");
+const parityRes = runVimParity({
+  startText: startText,
+  keystrokes: llmKeystrokes,
+});
+
+if (parityRes.engineNormalized === parityRes.vimNormalized) {
+  console.log("✅ PARITY MATCH");
+} else {
+  console.log("❌ PARITY MISMATCH");
+  console.log("Vim:", parityRes.vimNormalized);
+  console.log("Eng:", parityRes.engineNormalized);
 }

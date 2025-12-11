@@ -1,6 +1,7 @@
 import { VimState } from "./vim-types";
 import { executeKeystrokeInternal } from "./vim-engine";
 import { performSearch } from "./vim-search";
+import { evaluateVimExpression } from "./vim-ex-commands";
 
 function updateIncrementalSearch(state: VimState) {
   if (!state.options.incsearch || !state.commandLine) return;
@@ -48,6 +49,25 @@ export function handleCommandModeKeystroke(
   if (keystroke === "<CR>" || keystroke === "<Enter>") {
     const cmd = state.commandLine;
     state.commandLine = null;
+
+    // Handle expression register assignment/insertion
+    if (cmd && cmd.startsWith("=")) {
+      const expr = cmd.slice(1);
+      state.registers["="] = expr; // Store expression
+      try {
+        const result = evaluateVimExpression(expr, { line: state.cursorLine });
+        // For <C-r>=, we assume return to insert mode and insert result
+        state.mode = "insert";
+        for (const char of result) {
+          state = executeKeystrokeInternal(state, char);
+        }
+      } catch (e) {
+        state.mode = "normal"; // On error, return to normal
+        console.warn("Expression evaluation failed", e);
+      }
+      return state;
+    }
+
     state.mode = "normal"; // Reset mode before executing command
     if (cmd === null) return state;
     const isSearch = cmd.startsWith("/") || cmd.startsWith("?");

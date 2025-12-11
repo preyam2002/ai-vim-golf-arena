@@ -1,8 +1,9 @@
-const {
+import {
   createInitialState,
   executeKeystroke,
   extractKeystroke,
-} = require("../src/lib/vim-engine");
+} from "../src/lib/vim-engine";
+import { runVimParity } from "../src/lib/vim-parity";
 
 // Mock VimState interface
 interface VimState {
@@ -79,7 +80,7 @@ const sequence = [
   ":%g/^=======/d<CR>",
   ":%g/^>>>>>>>/d<CR>",
   "1GdG",
-  "idef calculate_total(items):<CR>\"\"\"Calculate total price of items with tax\"\"\"<CR>total = sum(item['price'] for item in items)<CR>total = total * 0.9  # Apply 10% discount<CR>return total * 1.15  # Apply 15% tax<CR><CR>def format_currency(amount):<CR>\"\"\"Format amount as EUR\"\"\"<CR>return f\"€{amount:.2f}\"<CR><CR>def process_order(items):<CR>total = calculate_total(items)<CR>shipping = 5.99 if total < 50 else 0<CR>return {<CR>    'status': 'processed',<CR>    'total': format_currency(total + shipping),<CR>    'items_count': len(items),<CR>    'shipping': shipping<CR><BS><BS><BS><BS>}<CR><Esc>",
+  'idef calculate_total(items):<CR>"""Calculate total price of items with tax"""<CR>total = sum(item[\'price\'] for item in items)<CR>total = total * 0.9  # Apply 10% discount<CR>return total * 1.15  # Apply 15% tax<CR><CR>def format_currency(amount):<CR>"""Format amount as EUR"""<CR>return f"€{amount:.2f}"<CR><CR>def process_order(items):<CR>total = calculate_total(items)<CR>shipping = 5.99 if total < 50 else 0<CR>return {<CR>    \'status\': \'processed\',<CR>    \'total\': format_currency(total + shipping),<CR>    \'items_count\': len(items),<CR>    \'shipping\': shipping<CR><BS><BS><BS><BS>}<CR><Esc>',
 ];
 
 function runTest() {
@@ -88,6 +89,7 @@ function runTest() {
   let vimState = createInitialState(startText);
   let rawInput = "";
   let processedIndex = 0;
+  const capturedTokens: string[] = [];
 
   // Combine sequence into one input stream for simulation
   // We need to be careful about how we feed this.
@@ -114,6 +116,7 @@ function runTest() {
 
     try {
       vimState = executeKeystroke(vimState, keystroke);
+      capturedTokens.push(keystroke);
     } catch (e) {
       console.error("[Error] executeKeystroke failed:", e);
       break;
@@ -148,6 +151,28 @@ function runTest() {
         console.log(`  Act: ${actualLines[i] || "<EOF>"}`);
       }
     }
+  }
+
+  // Parity Check (re-using full input)
+  console.log("\n=== Checking Parity ===");
+  // We need tokens. extractKeystroke does that iteratively.
+  // Ideally, use tokenizeKeystrokes if available, or just runVimParity with keystrokes string if supported?
+  // runVimParity supports 'keystrokes' string and uses 'tokenizeKeystrokes'.
+  // But extractKeystroke handling of 'sequence' array joined might differ?
+  // The script joins sequence.
+
+  const parityRes = runVimParity({
+    startText: startText,
+    tokens: capturedTokens,
+    vimBin: "nvim",
+  });
+
+  if (parityRes.engineNormalized === parityRes.vimNormalized) {
+    console.log("✅ PARITY MATCH");
+  } else {
+    console.log("❌ PARITY MISMATCH");
+    console.log("Vim:", parityRes.vimNormalized);
+    console.log("Engine:", parityRes.engineNormalized);
   }
 }
 

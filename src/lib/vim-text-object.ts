@@ -175,8 +175,10 @@ export function getTextObject(
   const bracketPairs: Record<string, { open: string; close: string }> = {
     "(": { open: "(", close: ")" },
     ")": { open: "(", close: ")" },
+    b: { open: "(", close: ")" }, // ib/ab is alias for i(/a(
     "{": { open: "{", close: "}" },
     "}": { open: "{", close: "}" },
+    B: { open: "{", close: "}" }, // iB/aB is alias for i{/a{
     "[": { open: "[", close: "]" },
     "]": { open: "[", close: "]" },
     "<": { open: "<", close: ">" },
@@ -350,6 +352,15 @@ export function getTextObject(
         isWhitespace(lines[startLine][startCol])
       ) {
         startCol++;
+      }
+      // Trim trailing whitespace for "inner" sentence
+      while (
+        endCol > 0 &&
+        endLine === startLine &&
+        endCol >= startCol &&
+        isWhitespace(lines[endLine][endCol])
+      ) {
+        endCol--;
       }
     }
 

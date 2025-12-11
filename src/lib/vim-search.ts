@@ -39,6 +39,9 @@ export function performSearch(
           col: match.index,
           length: match[0].length,
         });
+        if (match[0].length === 0) {
+          regex.lastIndex++;
+        }
       }
     }
   } catch (e) {
@@ -53,16 +56,26 @@ export function performSearch(
   });
 
   // Filter and reorder based on direction and cursor position
+  // Filter and reorder based on direction and cursor position
   if (direction === "backward") {
     // For backward search: matches before cursor, in reverse order
     const beforeCursor = matches.filter(
       (m) => m.line < startLine || (m.line === startLine && m.col < startCol)
     );
-    return beforeCursor.reverse();
+    const afterCursor = matches.filter(
+      (m) => m.line > startLine || (m.line === startLine && m.col >= startCol)
+    );
+    // Return beforeCursor reversed + afterCursor reversed (wrap around)
+    return [...beforeCursor.reverse(), ...afterCursor.reverse()];
   } else {
     // For forward search: matches after cursor, in forward order
-    return matches.filter(
+    const afterCursor = matches.filter(
       (m) => m.line > startLine || (m.line === startLine && m.col > startCol)
     );
+    const beforeCursor = matches.filter(
+      (m) => m.line < startLine || (m.line === startLine && m.col <= startCol)
+    );
+    // Return afterCursor + beforeCursor (wrap around)
+    return [...afterCursor, ...beforeCursor];
   }
 }

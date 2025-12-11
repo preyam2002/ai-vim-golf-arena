@@ -3,6 +3,7 @@ import {
   executeKeystroke,
   normalizeText,
 } from "../src/lib/vim-engine";
+import { runVimParity } from "../src/lib/vim-parity";
 import { VimState } from "../src/lib/vim-types";
 
 function runTest(
@@ -39,13 +40,26 @@ function runTest(
   const normalizedExpected = normalizeText(expectedText);
 
   if (normalizedResult === normalizedExpected) {
-    console.log("✅ PASS");
+    console.log("✅ PASS (Engine)");
   } else {
-    console.log("❌ FAIL");
+    console.log("❌ FAIL (Engine)");
     console.log("Expected:");
     console.log(normalizedExpected);
     console.log("Actual:");
     console.log(normalizedResult);
+  }
+
+  // Parity Check
+  const parityRes = runVimParity({
+    startText,
+    tokens,
+  });
+  if (parityRes.engineNormalized === parityRes.vimNormalized) {
+    console.log("✅ PARITY MATCH");
+  } else {
+    console.log("❌ PARITY MISMATCH");
+    console.log("Vim:", parityRes.vimNormalized);
+    console.log("Eng:", parityRes.engineNormalized);
   }
 }
 
@@ -99,12 +113,7 @@ runTest(
 // 4. Join (J)
 runTest("Join (J)", "line 1\nline 2", "J", "line 1 line 2");
 
-runTest(
-  "Join without space (gJ)",
-  "line1\n\nline2",
-  "j$gJ",
-  "line1\nline2"
-);
+runTest("Join without space (gJ)", "line1\n\nline2", "j$gJ", "line1\nline2");
 
 // 5. Toggle Case (~)
 runTest(

@@ -15,7 +15,7 @@ export const staticChallenges: Challenge[] = [
     description: "Swap the two words on each line",
     startText: "hello world\nfoo bar\nping pong",
     targetText: "world hello\nbar foo\npong ping",
-    bestHumanScore: 22,
+    bestHumanScore: 20,
   },
   {
     id: "static-3",
@@ -55,7 +55,7 @@ export const staticChallenges: Challenge[] = [
     description: "Remove all empty lines",
     startText: "line1\n\nline2\n\n\nline3",
     targetText: "line1\nline2\nline3",
-    bestHumanScore: 8,
+    bestHumanScore: 7,
   },
   {
     id: "static-8",
@@ -71,7 +71,7 @@ export const staticChallenges: Challenge[] = [
     description: "Remove trailing spaces from every line",
     startText: "alpha  \nbeta   \ngamma    \ndelta",
     targetText: "alpha\nbeta\ngamma\ndelta",
-    bestHumanScore: 13,
+    bestHumanScore: 10,
   },
   {
     id: "static-10",
