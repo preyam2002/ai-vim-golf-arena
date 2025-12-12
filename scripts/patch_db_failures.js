@@ -1,43 +1,50 @@
-
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
-const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+const DB_PATH = path.join(__dirname, '../data/db.json');
+const CHALLENGES_PATH = path.join(__dirname, '../data/popular-challenges.json');
 
-// List of result keys to mark as failed
-const updates = [
-  { challengeId: 'static-1', modelId: 'xai/grok-4-fast-reasoning' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'xai/grok-code-fast-1' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'anthropic/claude-3.7-sonnet' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'anthropic/claude-haiku-4.5' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'anthropic/claude-sonnet-4' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'google/gemini-2.5-flash' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'google/gemini-2.5-flash-lite' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'openai/gpt-5-codex' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'openai/gpt-5' },
-  { challengeId: '9v00680e54330000000006c0', modelId: 'openai/gpt-5-mini' }
-];
+const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+const challenges = JSON.parse(fs.readFileSync(CHALLENGES_PATH, 'utf8'));
+const challengeMap = new Map(challenges.map(c => [c.id, c]));
 
-let changedCount = 0;
+function normalize(text) {
+  if (!text) return "";
+  return text.trim().replace(/\r\n/g, '\n');
+}
 
-updates.forEach(({ challengeId, modelId }) => {
-  if (db.results[challengeId] && db.results[challengeId][modelId]) {
-    if (db.results[challengeId][modelId].success === true) {
-      db.results[challengeId][modelId].success = false;
-      console.log(`Updated ${challengeId} - ${modelId} to success: false`);
-      changedCount++;
-    } else {
-      console.log(`Skipping ${challengeId} - ${modelId}, already false or missing`);
+let changed = 0;
+
+for (const challengeId of Object.keys(db.results)) {
+  const challenge = challengeMap.get(challengeId);
+  if (!challenge) continue;
+
+  const target = normalize(challenge.targetText);
+  const modelResults = db.results[challengeId];
+
+  for (const modelId of Object.keys(modelResults)) {
+    const res = modelResults[modelId];
+    if (res.success !== false) {
+      // It is marked as success (or undefined, which means success)
+      const final = normalize(res.finalText);
+      if (final !== target) {
+        console.log(`[Patch] Marking ${challengeId} / ${modelId} as failed.`);
+        console.log(`  Expected len: ${target.length}`);
+        console.log(`  Actual len:   ${final.length}`);
+        res.success = false;
+        changed++;
+        
+        if (final.length === 0 && target.length > 0) {
+            console.log("  Reason: Empty final text");
+        }
+      }
     }
-  } else {
-    console.warn(`Warning: Could not find result for ${challengeId} - ${modelId}`);
   }
-});
+}
 
-if (changedCount > 0) {
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
-  console.log(`Successfully updated ${changedCount} entries in db.json`);
+if (changed > 0) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  console.log(`Updated ${changed} entries in db.json`);
 } else {
-  console.log('No changes made to db.json');
+  console.log("No changes needed.");
 }
