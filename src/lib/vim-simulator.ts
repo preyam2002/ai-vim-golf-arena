@@ -27,7 +27,8 @@ export class VimSimulator {
       text: this.getText(),
       cursorLine: this.state.cursorLine,
       cursorCol: this.state.cursorCol,
-      mode: this.state.mode,
+      mode: this.state.mode as ReplayStep["mode"],
+      commandLine: this.state.commandLine || null,
     });
   }
 
@@ -50,6 +51,10 @@ export class VimSimulator {
 
   getMode(): string {
     return this.state.mode;
+  }
+
+  getCommandLine(): string | null {
+    return this.state.commandLine || null;
   }
 
   executeSingleKeystroke(token: string): void {

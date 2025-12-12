@@ -15,7 +15,10 @@ interface LeaderboardProps {
 
 type SortKey = "rank" | "model" | "keystrokes" | "diff" | "time" | "status";
 
-const statusPriority: Record<RunResult["status"] | undefined, number> = {
+const statusPriority: Record<
+  Exclude<RunResult["status"], undefined> | "undefined",
+  number
+> = {
   complete: 0,
   failed: 0,
   undefined: 0,
@@ -84,7 +87,8 @@ export function Leaderboard({
   const sortedResults = useMemo(() => {
     const compareByRank = (a: RunResult, b: RunResult) => {
       const statusDiff =
-        (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+        (statusPriority[a.status ?? "undefined"] ?? 2) -
+        (statusPriority[b.status ?? "undefined"] ?? 2);
       if (statusDiff !== 0) return statusDiff;
       if (a.success !== b.success) return a.success ? -1 : 1;
       if (a.keystrokeCount !== b.keystrokeCount)
@@ -97,7 +101,8 @@ export function Leaderboard({
     return [...allResults].sort((a, b) => {
       let value = 0;
       const statusDiff =
-        (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+        (statusPriority[a.status ?? "undefined"] ?? 2) -
+        (statusPriority[b.status ?? "undefined"] ?? 2);
       if (statusDiff !== 0) {
         return statusDiff * direction;
       }
@@ -117,7 +122,8 @@ export function Leaderboard({
           break;
         case "status":
           value =
-            (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2);
+            (statusPriority[a.status ?? "undefined"] ?? 2) -
+            (statusPriority[b.status ?? "undefined"] ?? 2);
           if (value === 0) value = Number(b.success) - Number(a.success);
           if (value === 0) value = compareByRank(a, b);
           break;
@@ -283,10 +289,12 @@ export function Leaderboard({
                   }}
                   aria-selected={isSelected}
                   className={`border-b border-border last:border-0 hover:bg-muted/20 ${
-                    isSelected
-                      ? "bg-primary/10 ring-1 ring-primary/40"
+                    isSelected ? "bg-primary/10 ring-1 ring-primary/40" : ""
+                  } ${
+                    isClickable
+                      ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
                       : ""
-                  } ${isClickable ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40" : ""}`}
+                  }`}
                 >
                   <td className="px-4 py-3">
                     <span

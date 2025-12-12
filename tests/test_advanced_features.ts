@@ -2,12 +2,12 @@ import {
   VimState,
   createInitialState,
   executeKeystroke,
-} from "./src/lib/vim-engine";
+} from "../src/lib/vim-engine";
 import {
   buildCountPrefix,
   consumeCount,
   cycleIndex,
-} from "./src/lib/vim-page-utils";
+} from "../src/lib/vim-page-utils";
 
 function runTest(
   name: string,

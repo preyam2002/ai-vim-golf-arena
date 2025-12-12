@@ -11,10 +11,9 @@ async function getCacheStatus(challengeId: string) {
 
     for (const { id: modelId } of availableModels) {
       const offline = getOfflineSolution(challengeId, modelId);
-      const stored =
-        store?.getResult && challengeId
-          ? await store.getResult(challengeId, modelId)
-          : undefined;
+      const stored = challengeId
+        ? await store.getResult(challengeId, modelId)
+        : undefined;
 
       if (!offline && !stored) {
         missingModelIds.push(modelId);

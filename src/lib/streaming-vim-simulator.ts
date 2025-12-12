@@ -22,6 +22,7 @@ export class StreamingVimSimulator {
         cursorLine: 0,
         cursorCol: 0,
         mode: "normal",
+        commandLine: null,
       },
     ];
   }
@@ -59,6 +60,7 @@ export class StreamingVimSimulator {
             | "visual"
             | "visual-line"
             | "visual-block",
+          commandLine: this.simulator.getCommandLine(),
         };
         this.steps.push(step);
         newSteps.push(step);
@@ -127,6 +129,7 @@ export class StreamingVimSimulator {
         cursorLine: 0,
         cursorCol: 0,
         mode: "normal",
+        commandLine: null,
       },
     ];
   }

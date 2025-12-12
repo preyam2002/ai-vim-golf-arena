@@ -383,7 +383,12 @@ export function deleteRange(
   endCol: number,
   isLineWise: boolean,
   register?: string,
-  saveToRegisterFn?: (state: any, text: string, register?: string) => void
+  saveToRegisterFn?: (
+    state: any,
+    text: string,
+    register?: string,
+    isLineWise?: boolean
+  ) => void
 ): string {
   let deletedText = "";
   const explicitRegister = register ?? state.activeRegister ?? null;

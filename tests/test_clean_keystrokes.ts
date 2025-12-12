@@ -1,4 +1,4 @@
-import { cleanKeystrokes } from "./src/lib/ai-gateway";
+import { cleanKeystrokes } from "../src/lib/ai-gateway";
 
 console.log("=== Testing cleanKeystrokes function ===\n");
 

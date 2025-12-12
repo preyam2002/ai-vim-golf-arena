@@ -3,17 +3,19 @@
  * Tests the full Daily Challenge simulation flow without VimWasm
  */
 
-import { cleanKeystrokes } from "./src/lib/ai-gateway";
-import { getDailyChallenge } from "./src/lib/challenge-source";
+import { cleanKeystrokes } from "../src/lib/ai-gateway";
+import { getDailyChallenge } from "../src/lib/challenge-source";
 import {
   createInitialState,
   executeKeystroke,
   tokenizeKeystrokes,
   normalizeText,
-} from "./src/lib/vim-engine";
-import { maybeExpectVimParity } from "./src/lib/test-parity";
-import { store } from "./src/lib/store";
-import dbData from "./data/db.json";
+} from "../src/lib/vim-engine";
+import { maybeExpectVimParity } from "../src/lib/test-parity";
+import { store } from "../src/lib/store";
+import dbData from "../data/db.json";
+
+const MAX_TEST_TIMEOUT_MS = 30000;
 
 // Test configuration
 const TEST_CONFIG = {
@@ -132,7 +134,7 @@ async function testAllModelsFromDB() {
   let totalCount = 0;
 
   for (const [challengeId, models] of Object.entries(results)) {
-    const { staticChallenges } = await import("./src/lib/static-challenges");
+    const { staticChallenges } = await import("../src/lib/static-challenges");
     const challenge = staticChallenges.find((c) => c.id === challengeId);
 
     if (!challenge) {

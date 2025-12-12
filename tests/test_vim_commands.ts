@@ -3,8 +3,6 @@ import {
   createInitialState,
   executeKeystroke,
   normalizeText,
-  executeKeystroke,
-  normalizeText,
 } from "../src/lib/vim-engine";
 import { runVimParity } from "../src/lib/vim-parity";
 

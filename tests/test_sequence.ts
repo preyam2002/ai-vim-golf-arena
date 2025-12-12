@@ -1,4 +1,4 @@
-import { createInitialState, executeKeystroke } from "./src/lib/vim-engine.ts";
+import { createInitialState, executeKeystroke } from "../src/lib/vim-engine.ts";
 
 const testText = `JOBS_API_URL=http://localhost:5000
 JOBS_BASE_URL=http://localhost:8000

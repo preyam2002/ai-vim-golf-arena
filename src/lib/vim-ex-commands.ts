@@ -1431,10 +1431,87 @@ export function executeExCommand(
       return { part, remaining: "" };
     };
 
+    // Read an expression until delimiter, respecting string literals
+    const readExpressionUntilDelimiter = (
+      input: string
+    ): { part: string; remaining: string } => {
+      let part = "";
+      let i = 0;
+      let inSingleQuote = false;
+      let inDoubleQuote = false;
+
+      while (i < input.length) {
+        const ch = input[i];
+
+        if (inSingleQuote) {
+          if (ch === "'") {
+            if (input[i + 1] === "'") {
+              part += "''";
+              i += 2;
+              continue;
+            }
+            inSingleQuote = false;
+          }
+          part += ch;
+          i += 1;
+          continue;
+        }
+
+        if (inDoubleQuote) {
+          if (ch === "\\") {
+            part += ch;
+            i += 1;
+            if (i < input.length) {
+              part += input[i];
+              i += 1;
+            }
+            continue;
+          }
+          if (ch === '"') {
+            inDoubleQuote = false;
+          }
+          part += ch;
+          i += 1;
+          continue;
+        }
+
+        // Not in quote
+        if (ch === "'") {
+          inSingleQuote = true;
+          part += ch;
+          i += 1;
+          continue;
+        }
+        if (ch === '"') {
+          inDoubleQuote = true;
+          part += ch;
+          i += 1;
+          continue;
+        }
+
+        if (ch === "\\" && input[i + 1] === delim) {
+          part += delim;
+          i += 2;
+          continue;
+        }
+
+        if (ch === delim) {
+          return { part, remaining: input.slice(i + 1) };
+        }
+
+        part += ch;
+        i += 1;
+      }
+      return { part, remaining: "" };
+    };
+
     const { part: patternRaw, remaining: afterPattern } =
       readUntilDelimiter(remainder);
-    const { part: replacementRaw, remaining: flagsRaw } =
-      readUntilDelimiter(afterPattern);
+
+    const looksLikeExpression = afterPattern.startsWith("\\=");
+    const { part: replacementRaw, remaining: flagsRaw } = looksLikeExpression
+      ? readExpressionUntilDelimiter(afterPattern)
+      : readUntilDelimiter(afterPattern);
 
     let pattern = patternRaw;
     const rawReplacement = replacementRaw || "";

@@ -1,4 +1,4 @@
-import { createInitialState, executeKeystroke } from "./src/lib/vim-engine.ts";
+import { createInitialState, executeKeystroke } from "../src/lib/vim-engine.ts";
 
 const testText = `line1
 line2,

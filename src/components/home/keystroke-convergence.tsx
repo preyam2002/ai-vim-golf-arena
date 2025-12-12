@@ -193,7 +193,7 @@ export const KeystrokeConvergence = forwardRef<
 
       const positionsAttr = geometry.getAttribute(
         "position"
-      ) as THREE.BufferAttribute;
+      ) as import("three").BufferAttribute;
 
       pulseRef.current = () => {
         start = performance.now();

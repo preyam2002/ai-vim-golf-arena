@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { buildCountPrefix, consumeCount, cycleIndex } from "@/lib/vim-page-utils";
+import {
+  buildCountPrefix,
+  consumeCount,
+  cycleIndex,
+} from "@/lib/vim-page-utils";
 
 type Hint = {
   key: string;
@@ -69,9 +73,9 @@ function generateHintKeys(count: number): string[] {
 }
 
 function getLandmarks(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>(LANDMARK_SELECTOR)).filter(
-    (el) => isVisible(el)
-  );
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(LANDMARK_SELECTOR)
+  ).filter((el) => isVisible(el));
 }
 
 function scrollIntoViewCentered(el: HTMLElement) {
@@ -79,7 +83,8 @@ function scrollIntoViewCentered(el: HTMLElement) {
 }
 
 function getScrollableRoot(): HTMLElement | Window {
-  if (document.scrollingElement) return document.scrollingElement;
+  if ((document as any).scrollingElement)
+    return (document as any).scrollingElement;
   return window;
 }
 
@@ -128,8 +133,14 @@ export function useVimNavigation() {
       clearHighlights();
       const trimmed = query.trim();
       if (!trimmed) return;
-      const regex = new RegExp(trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const regex = new RegExp(
+        trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "gi"
+      );
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT
+      );
       const textNodes: Text[] = [];
       const found: HTMLElement[] = [];
       const foundForHints: HTMLElement[] = [];
@@ -222,15 +233,17 @@ export function useVimNavigation() {
     ).filter((el) => isVisible(el));
     if (candidates.length === 0) return;
     const keys = generateHintKeys(candidates.length);
-    const nextHints: Hint[] = candidates.slice(0, keys.length).map((el, idx) => {
-      const rect = el.getBoundingClientRect();
-      return {
-        key: keys[idx],
-        x: rect.left + window.scrollX,
-        y: rect.top + window.scrollY,
-        target: el,
-      };
-    });
+    const nextHints: Hint[] = candidates
+      .slice(0, keys.length)
+      .map((el, idx) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          key: keys[idx],
+          x: rect.left + window.scrollX,
+          y: rect.top + window.scrollY,
+          target: el,
+        };
+      });
     hintsRef.current = nextHints;
     setHints(nextHints);
     setHintsVisible(true);
@@ -243,7 +256,11 @@ export function useVimNavigation() {
       target.click();
     } else {
       target.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true, view: window })
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        })
       );
     }
   }, []);
@@ -259,7 +276,11 @@ export function useVimNavigation() {
   const handleSearchNavigation = useCallback(
     (delta: number) => {
       if (matches.length === 0) return;
-      const next = cycleIndex(activeMatch === -1 ? 0 : activeMatch, delta, matches.length);
+      const next = cycleIndex(
+        activeMatch === -1 ? 0 : activeMatch,
+        delta,
+        matches.length
+      );
       setActiveMatch(next);
       const el = matches[next];
       if (el) scrollIntoViewCentered(el);
@@ -324,82 +345,85 @@ export function useVimNavigation() {
     scrollIntoViewCentered(target);
   }, []);
 
-  const applySneak = useCallback(
-    (pattern: string, count: number) => {
-      if (!pattern || pattern.length < 2) return;
-      const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      const marks: HTMLElement[] = [];
-      const limit = 60;
+  const applySneak = useCallback((pattern: string, count: number) => {
+    if (!pattern || pattern.length < 2) return;
+    const regex = new RegExp(
+      pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "gi"
+    );
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT
+    );
+    const marks: HTMLElement[] = [];
+    const limit = 60;
 
-      const shouldSkip = (node: Node | null) => {
-        if (!node || !(node instanceof HTMLElement)) return false;
-        return Boolean(node.closest("[data-vim-ignore='true']"));
-      };
+    const shouldSkip = (node: Node | null) => {
+      if (!node || !(node instanceof HTMLElement)) return false;
+      return Boolean(node.closest("[data-vim-ignore='true']"));
+    };
 
-      let node = walker.nextNode();
-      while (node && marks.length < limit) {
-        if (shouldSkip(node.parentElement)) {
-          node = walker.nextNode();
-          continue;
-        }
-        const text = node.nodeValue || "";
-        regex.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        let lastIndex = 0;
-        let replaced = false;
-        const frag = document.createDocumentFragment();
-
-        while ((match = regex.exec(text)) && marks.length < limit) {
-          const before = text.slice(lastIndex, match.index);
-          if (before) frag.appendChild(document.createTextNode(before));
-          const mark = document.createElement("mark");
-          mark.className = "vim-sneak-highlight";
-          mark.textContent = match[0];
-          frag.appendChild(mark);
-          marks.push(mark);
-          lastIndex = match.index + match[0].length;
-          replaced = true;
-        }
-
-        if (replaced) {
-          const after = text.slice(lastIndex);
-          if (after) frag.appendChild(document.createTextNode(after));
-          node.parentElement?.replaceChild(frag, node);
-        }
+    let node = walker.nextNode();
+    while (node && marks.length < limit) {
+      if (shouldSkip(node.parentElement)) {
         node = walker.nextNode();
+        continue;
+      }
+      const text = node.nodeValue || "";
+      regex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      let lastIndex = 0;
+      let replaced = false;
+      const frag = document.createDocumentFragment();
+
+      while ((match = regex.exec(text)) && marks.length < limit) {
+        const before = text.slice(lastIndex, match.index);
+        if (before) frag.appendChild(document.createTextNode(before));
+        const mark = document.createElement("mark");
+        mark.className = "vim-sneak-highlight";
+        mark.textContent = match[0];
+        frag.appendChild(mark);
+        marks.push(mark);
+        lastIndex = match.index + match[0].length;
+        replaced = true;
       }
 
-      if (!marks.length) return;
-      highlightsRef.current = marks;
-      setMatches(marks);
-      const idx = Math.min(marks.length - 1, count - 1);
-      const target = marks[idx];
-      const rect = target.getBoundingClientRect();
-      const top = rect.top + window.scrollY;
-      const left = rect.left + window.scrollX;
-      window.scrollTo({
-        top: top - window.innerHeight * 0.3,
-        left: left,
-        behavior: "smooth",
-      });
-      const keys = generateHintKeys(marks.length);
-      const hints = marks.map((el, i) => {
-        const r = el.getBoundingClientRect();
-        return {
-          key: keys[i],
-          x: r.left + window.scrollX,
-          y: r.top + window.scrollY,
-          target: el,
-        };
-      });
-      matchHintsRef.current = hints;
-      setMatchHints(hints);
-      setMatchHintsVisible(true);
-      setMatchHintBuffer("");
-    },
-    []
-  );
+      if (replaced) {
+        const after = text.slice(lastIndex);
+        if (after) frag.appendChild(document.createTextNode(after));
+        node.parentElement?.replaceChild(frag, node);
+      }
+      node = walker.nextNode();
+    }
+
+    if (!marks.length) return;
+    highlightsRef.current = marks;
+    setMatches(marks);
+    const idx = Math.min(marks.length - 1, count - 1);
+    const target = marks[idx];
+    const rect = target.getBoundingClientRect();
+    const top = rect.top + window.scrollY;
+    const left = rect.left + window.scrollX;
+    window.scrollTo({
+      top: top - window.innerHeight * 0.3,
+      left: left,
+      behavior: "smooth",
+    });
+    const keys = generateHintKeys(marks.length);
+    const hints = marks.map((el, i) => {
+      const r = el.getBoundingClientRect();
+      return {
+        key: keys[i],
+        x: r.left + window.scrollX,
+        y: r.top + window.scrollY,
+        target: el,
+      };
+    });
+    matchHintsRef.current = hints;
+    setMatchHints(hints);
+    setMatchHintsVisible(true);
+    setMatchHintBuffer("");
+  }, []);
 
   const handleKeydown = useCallback(
     (event: KeyboardEvent) => {
@@ -471,11 +495,15 @@ export function useVimNavigation() {
         if (/^[a-z0-9]$/i.test(event.key)) {
           const next = (matchHintBuffer + event.key.toLowerCase()).slice(0, 3);
           setMatchHintBuffer(next);
-          const possible = matchHintsRef.current.filter((h) => h.key.startsWith(next));
+          const possible = matchHintsRef.current.filter((h) =>
+            h.key.startsWith(next)
+          );
           if (possible.length === 1 && possible[0].key === next) {
             event.preventDefault();
             const hint = possible[0];
-            const idx = matchHintsRef.current.findIndex((h) => h.key === hint.key);
+            const idx = matchHintsRef.current.findIndex(
+              (h) => h.key === hint.key
+            );
             setActiveMatch(idx);
             hint.target.scrollIntoView({ behavior: "smooth", block: "center" });
             setMatchHintBuffer("");
@@ -506,7 +534,11 @@ export function useVimNavigation() {
           window.innerWidth / 2,
           window.innerHeight / 2
         ) as HTMLElement | null;
-        const target = isClickable(active) ? active : center && isClickable(center) ? center : null;
+        const target = isClickable(active)
+          ? active
+          : center && isClickable(center)
+          ? center
+          : null;
         if (target) {
           event.preventDefault();
           target.click();
@@ -719,4 +751,3 @@ export function useVimNavigation() {
 
   return value;
 }
-

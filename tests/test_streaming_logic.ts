@@ -2,29 +2,10 @@ import {
   createInitialState,
   executeKeystroke,
   extractKeystroke,
+  type VimState,
 } from "../src/lib/vim-engine";
+import type { ReplayStep } from "../src/lib/types";
 import { runVimParity } from "../src/lib/vim-parity";
-
-// Mock VimState interface since we can't import type easily with require in ts-node without setup
-// We'll just use any for now or define a compatible interface
-interface VimState {
-  lines: string[];
-  cursorLine: number;
-  cursorCol: number;
-  mode: string;
-  commandLine: string | null;
-  [key: string]: any;
-}
-
-// Mock ReplayStep
-interface ReplayStep {
-  keystroke: string;
-  text: string;
-  cursorLine: number;
-  cursorCol: number;
-  mode: string;
-  commandLine: string | null;
-}
 
 // Simulator state
 interface Simulator {

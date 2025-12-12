@@ -2,7 +2,7 @@ import {
   createInitialState,
   executeKeystroke,
   tokenizeKeystrokes,
-} from "./src/lib/vim-engine";
+} from "../src/lib/vim-engine";
 
 console.log("=== Testing Claude Sonnet 4 Keystrokes ===\n");
 
