@@ -11,6 +11,7 @@ export interface ModelConfig {
   id: string;
   name: string;
   provider: string;
+  isThinking?: boolean;
 }
 
 export interface RunResult {

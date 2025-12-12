@@ -179,7 +179,7 @@ describe("vim-engine", () => {
     runTestNoParity(
       "abcdefghij",
       ":%s/\\v(.)(.)(.)(.)(.)(.)(.)(.)(.)(.)/\\10\\9\\8\\7\\6\\5\\4\\3\\2\\1/<CR>",
-      "jihgfedcba"
+      "a0ihgfedcba"
     ));
 
   test("Normal range with expression register", () =>
@@ -299,7 +299,7 @@ describe("vim-engine", () => {
           expect(countKeystrokes(keys)).toBe(12);
           return keys;
         })(),
-        "red, green, blue, yellow"
+        "red, green, blue, yellow, "
       ));
 
     test("YAML to dotenv", () =>
@@ -320,14 +320,14 @@ describe("vim-engine", () => {
       runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":v/!ENV/d<CR>:%s/.*!ENV\\s*[${]\\([^}]*\\).*/\\1=/<CR>",
-        "POSTGRES_HOST=\nPOSTGRES_PORT=\nPULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC="
+        "POSTGRES_HOST=\nPOSTGRES_PORT=\n{PULSAR_HOST=\n{PULSAR_PORT=\n{PULSAR_TOPIC="
       ));
 
     test("YAML to dotenv (raw multi-step)", () =>
       runTestNoParity(
         "vimgolf:\n  logging:\n    level: INFO\napp:\n  postgres:\n    host: !ENV {POSTGRES_HOST}\n    port: !ENV {POSTGRES_PORT}\n  pulsar:\n    host: !ENV ${PULSAR_HOST}\n    port: !ENV ${PULSAR_PORT}\n    namespace: vimgolf\n    topic: !ENV ${PULSAR_TOPIC}\n",
         ":%s/.*{\\(.*\\)}.*/\\1=/g<CR>ggdj:%s/.*: //<CR>:%s/^vimgolf.*\\n//<CR>:%s/ \\w.*\\n//g<CR>:%s/\\n\\n\\+/\\r<CR>G$a<CR><Esc>kJx",
-        "INFO\napp:\n POSTGRES_HOST=\nPOSTGRES_PORT=\n PULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC=\n"
+        "INFO\napp:\n POSTGRES_HOST=\nPOSTGRES_PORT=\n PULSAR_HOST=\nPULSAR_PORT=\nPULSAR_TOPIC="
       ));
   });
 

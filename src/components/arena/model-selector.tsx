@@ -1,29 +1,33 @@
-"use client"
+"use client";
 
-import { availableModels } from "@/lib/ai-gateway"
+import { availableModels } from "@/lib/ai-gateway";
 
 interface ModelSelectorProps {
-  selectedModels: string[]
-  onSelectionChange: (models: string[]) => void
-  disabled?: boolean
+  selectedModels: string[];
+  onSelectionChange: (models: string[]) => void;
+  disabled?: boolean;
 }
 
-export function ModelSelector({ selectedModels, onSelectionChange, disabled }: ModelSelectorProps) {
+export function ModelSelector({
+  selectedModels,
+  onSelectionChange,
+  disabled,
+}: ModelSelectorProps) {
   const toggleModel = (modelId: string) => {
     if (selectedModels.includes(modelId)) {
-      onSelectionChange(selectedModels.filter((id) => id !== modelId))
+      onSelectionChange(selectedModels.filter((id) => id !== modelId));
     } else {
-      onSelectionChange([...selectedModels, modelId])
+      onSelectionChange([...selectedModels, modelId]);
     }
-  }
+  };
 
   const selectAll = () => {
-    onSelectionChange(availableModels.map((m) => m.id))
-  }
+    onSelectionChange(availableModels.map((m) => m.id));
+  };
 
   const clearAll = () => {
-    onSelectionChange([])
-  }
+    onSelectionChange([]);
+  };
 
   return (
     <div className="neon-card rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-lg shadow-[0_30px_80px_-70px_var(--primary)]">
@@ -53,7 +57,7 @@ export function ModelSelector({ selectedModels, onSelectionChange, disabled }: M
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {availableModels.map((model) => {
-          const active = selectedModels.includes(model.id)
+          const active = selectedModels.includes(model.id);
           return (
             <label
               key={model.id}
@@ -71,7 +75,9 @@ export function ModelSelector({ selectedModels, onSelectionChange, disabled }: M
                 className="h-4 w-4 rounded border-white/20 text-primary focus:ring-primary"
               />
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-white truncate">{model.name}</div>
+                <div className="font-semibold text-white truncate">
+                  {model.name}
+                </div>
                 <div className="text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
                   {model.provider}
                 </div>
@@ -80,9 +86,9 @@ export function ModelSelector({ selectedModels, onSelectionChange, disabled }: M
                 {active ? "ON" : "OFF"}
               </div>
             </label>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

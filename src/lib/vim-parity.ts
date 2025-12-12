@@ -80,9 +80,13 @@ function runEngine(
   const helpers: ExCommandHelpers = {
     executeKeystroke,
     tokenizeKeystrokes,
-    runShellCommand: (cmd: string) => {
+    runShellCommand: (cmd: string, stdin?: string) => {
       try {
-        const res = spawnSync(cmd, { shell: true, encoding: "utf8" });
+        const res = spawnSync(cmd, {
+          shell: true,
+          encoding: "utf8",
+          input: stdin,
+        });
         if (res.error) throw res.error;
         return res.stdout;
       } catch (e) {
@@ -111,25 +115,41 @@ async function runRealVimAsync(
   await acquireSemaphore();
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vim-parity-"));
+
   const bufferPath = path.join(tmpDir, "buffer.txt");
   const scriptInPath = path.join(tmpDir, "input.keys");
   const initPath = path.join(tmpDir, "init.vim");
   const logPath = path.join(tmpDir, "nvim.log");
 
   try {
-    fs.writeFileSync(bufferPath, startText, "utf8");
+    fs.writeFileSync(bufferPath, startText || "", "utf8");
 
     // Convert tokens to raw keystroke bytes
     const rawKeys = tokens.map(convertTokenToRawKeys).join("");
 
     // Prepend cursor movement keys to ensure state matches
-    const cursorKeys = initialCursor
-      ? `${initialCursor.line + 1}G${initialCursor.col + 1}|`
-      : "";
+    // default to 0,0 so skip if matches default to avoid potential artifacts
+    const cursorKeys =
+      initialCursor && (initialCursor.line > 0 || initialCursor.col > 0)
+        ? `${initialCursor.line + 1}G${initialCursor.col + 1}|`
+        : "";
 
     // Append Esc and :wq<CR> to save and quit
     const scriptContent =
       cursorKeys + rawKeys + convertTokenToRawKeys("<Esc>:wq<CR>");
+
+    // Debug: trace script content
+    if (process.env.PARITY_DEBUG === "1") {
+      console.log(
+        "[PARITY DEBUG] Script content hex:",
+        Buffer.from(scriptContent).toString("hex")
+      );
+      console.log(
+        "[PARITY DEBUG] Script content:",
+        JSON.stringify(scriptContent)
+      );
+    }
+
     fs.writeFileSync(scriptInPath, scriptContent, { encoding: "utf8" });
 
     // Create init script for vim settings and initial cursor positioning
@@ -228,7 +248,13 @@ function runRealVim(
   fs.writeFileSync(bufferPath, startText, "utf8");
 
   // Convert tokens to raw keystroke bytes
+  if (process.env.PARITY_DEBUG === "1") {
+    console.log("[PARITY DEBUG SYNC] tokens:", tokens);
+  }
   const rawKeys = tokens.map(convertTokenToRawKeys).join("");
+  if (process.env.PARITY_DEBUG === "1") {
+    console.log("[PARITY DEBUG SYNC] rawKeys:", JSON.stringify(rawKeys));
+  }
 
   // Prepend cursor movement keys
   const cursorKeys = initialCursor
@@ -236,11 +262,22 @@ function runRealVim(
     : "";
 
   // Append :wq<CR> to save and quit
-  fs.writeFileSync(
-    scriptInPath,
-    cursorKeys + rawKeys + convertTokenToRawKeys("<Esc>:wq<CR>"),
-    "binary"
-  );
+  const scriptContent =
+    cursorKeys + rawKeys + convertTokenToRawKeys("<Esc>:wq<CR>");
+
+  // Debug: trace script content
+  if (process.env.PARITY_DEBUG === "1") {
+    console.log(
+      "[PARITY DEBUG SYNC] Script content hex:",
+      Buffer.from(scriptContent).toString("hex")
+    );
+    console.log(
+      "[PARITY DEBUG SYNC] Script content:",
+      JSON.stringify(scriptContent)
+    );
+  }
+
+  fs.writeFileSync(scriptInPath, scriptContent, { encoding: "utf8" });
 
   // Create init script for vim settings and initial cursor positioning
   const initCommands = [
@@ -283,7 +320,9 @@ function runRealVim(
     error = `spawn error (${vimBin}): ${proc.error.message}`;
   } else if (proc.status !== 0) {
     const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
-    error = `${vimBin} exit ${proc.status}: ${proc.stderr || proc.stdout || log}`;
+    error = `${vimBin} exit ${proc.status}: ${
+      proc.stderr || proc.stdout || log
+    }`;
   }
 
   let finalText = "";
@@ -302,17 +341,7 @@ function runRealVim(
  * Special keys like <Esc>, <CR>, <C-a> are converted to their byte equivalents.
  */
 function convertTokenToRawKeys(token: string): string {
-  // Handle Ex commands - need to convert <CR> or <Enter> at end to actual carriage return
-  if (token.startsWith(":")) {
-    return token.replace(/<CR>$/i, "\r").replace(/<Enter>$/i, "\r");
-  }
-
-  // Handle search commands - similar to Ex commands
-  if (token.startsWith("/") || token.startsWith("?")) {
-    return token.replace(/<CR>$/i, "\r").replace(/<Enter>$/i, "\r");
-  }
-
-  // Handle special key sequences in the token
+  // Handle special key sequences in the token - process ALL tokens through the key map
   let result = token;
 
   // Map of special key notations to their raw byte equivalents
@@ -336,7 +365,7 @@ function convertTokenToRawKeys(token: string): string {
     "<PageDown>": "\x1b[6~",
     "<Space>": " ",
     "<Bar>": "|",
-    "<Bslash>": "\",
+    "<Bslash>": "\\",
     "<Lt>": "<",
     "<Gt>": ">",
     "<NL>": "\n",
@@ -368,17 +397,18 @@ function convertTokenToRawKeys(token: string): string {
     "<C-y>": "\x19",
     "<C-z>": "\x1a",
     "<C-[>": "\x1b", // Same as Esc
-    "<C-\>": "\x1c",
+    "<C-\\>": "\x1c",
     "<C-]>": "\x1d",
     "<C-^>": "\x1e",
     "<C-_>": "\x1f",
+    "\n": "",
   };
 
   // Replace special key notations with raw bytes
   for (const [notation, rawByte] of Object.entries(keyMap)) {
     // Case-insensitive matching for the key notation
     const regex = new RegExp(
-      notation.replace(/[.*+?^${}()|[\\]/g, "\\$& "),
+      notation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       "gi"
     );
     result = result.replace(regex, rawByte);
@@ -424,9 +454,8 @@ export function runVimParity(input: VimParityInput): VimParityResult {
 
     const vimResult = runRealVim(
       input.startText,
-      // For Real Vim, we need the mode-change keys (prefixed by harness)
-      // because real vim always starts in Normal mode.
-      input.tokens ?? [],
+      // For Real Vim, we need the raw tokens before mode filtering
+      rawTokens,
       input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       input.vimBin,
       input.initialState

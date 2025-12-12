@@ -50,9 +50,69 @@ function buildSafeRegex(pattern: string, flags: string): RegExp | null {
 type CaseMode = "upper" | "lower" | null;
 
 function buildVimReplacementFn(template: string) {
-  return (match: string, ...args: any[]) => {
-    const groups = args.slice(0, -2) as (string | undefined)[];
-    return renderVimReplacement(template, match, groups);
+  return (...args: any[]) => {
+    // args: match, p1, p2, ... pN, offset, string
+    // The capture groups are from index 1 to args.length - 3 (match, offset, string excluded)
+    // But `args` length varies.
+    // Safe lookup:
+    const match = args[0];
+    const offset = args[args.length - 2];
+    const string = args[args.length - 1];
+    // Groups are args[1...length-3] if Named groups are absent.
+    // If named groups, last arg is object.
+    // Standard JS regex without named groups:
+    // args[1] is group 1.
+
+    let result = "";
+    for (let i = 0; i < template.length; i++) {
+      const char = template[i];
+      if (char === "&") {
+        result += match;
+      } else if (char === "\\") {
+        i++;
+        const next = template[i];
+        if (!next) {
+          result += "\\"; // Trailing backslash
+          break;
+        }
+        if (/[0-9]/.test(next)) {
+          const groupIdx = parseInt(next, 10);
+          if (groupIdx === 0) {
+            result += match;
+          } else {
+            // Look up group content.
+            // Group 1 is at args[1].
+            // Note: if groupIdx > capturedGroups, JS returns undefined probably or empty string.
+            // We return empty string for strict parity if missing.
+            // We need to know where groups stop.
+            // Can we check args boundary?
+            // Since we don't know N, assume args[groupIdx] is group if valid index.
+            const val = args[groupIdx];
+            result += typeof val === "string" ? val : "";
+          }
+        } else if (next === "r") {
+          result += "\n";
+        } else if (next === "n") {
+          // Vim \n in replacement is <Nul> (binary 0).
+          // Some agents might expect newline.
+          // Parity test 9v00680e used \n token in keystrokes, not replacement string?
+          // If we see \n in string, we output \x00.
+          result += "\x00";
+        } else if (next === "t") {
+          result += "\t";
+        } else if (next === "&") {
+          result += "&"; // Literal &
+        } else if (next === "\\") {
+          result += "\\";
+        } else {
+          // Unknown escape -> literal
+          result += next;
+        }
+      } else {
+        result += char;
+      }
+    }
+    return result;
   };
 }
 
@@ -177,18 +237,40 @@ function vimToJsRegex(pattern: string): string {
       .replace(new RegExp(CAP_OPEN, "g"), "(")
       .replace(new RegExp(CAP_CLOSE, "g"), ")");
 
+    // Use placeholders to prevent double-replacement
+    const PLUS = "__VIM_PLUS__";
+    const QMARK = "__VIM_QMARK__";
+    const PIPE = "__VIM_PIPE__";
+    const LBRACE = "__VIM_LBRACE__";
+    const RBRACE = "__VIM_RBRACE__";
+
     pattern = pattern
-      .replace(/\\\+/g, "+")
-      .replace(/\\\?/g, "?")
-      .replace(/\\\|/g, "|")
-      .replace(/\\\{/g, "{")
-      .replace(/\\\}/g, "}");
+      // Step 1: Map Vim quantifiers/metachars (\+, \?, \|, \{, \}) to placeholders
+      .replace(/\\\+/g, PLUS)
+      .replace(/\\\?/g, QMARK)
+      .replace(/\\\|/g, PIPE)
+      .replace(/\\\{/g, LBRACE)
+      .replace(/\\\}/g, RBRACE)
+      // Step 2: Escape literals (?, +, |, {)
+      .replace(/\+/g, "\\+")
+      .replace(/\?/g, "\\?")
+      .replace(/\|/g, "\\|")
+      .replace(/\{/g, "\\{")
+      // Step 3: Restore placeholders to JS metachars
+      .replace(new RegExp(PLUS, "g"), "+")
+      .replace(new RegExp(QMARK, "g"), "?")
+      .replace(new RegExp(PIPE, "g"), "|")
+      .replace(new RegExp(LBRACE, "g"), "{")
+      .replace(new RegExp(RBRACE, "g"), "}")
+      // Support non-greedy quantifiers: \{-} -> *?, \{-1,} -> +?
+      .replace(/\\{-}/g, "*?")
+      .replace(/\\{-1,}/g, "+?");
 
     // Prefer earlier matches before capture groups to better mirror Vim's
-    // backtracking behavior for patterns like ".*\\([A-Z_]\\+\\).*".
+    // backtracking behavior for patterns like ".*\\\([A-Z_]\\\+\\\).*".
     pattern = pattern.replace(/\.\*\(/g, ".*?(");
     // Allow optional brace after $ or { in patterns like [${]\([^}]*\)
-    pattern = pattern.replace(/\[\$\{]\(\[\^}]\*\)/g, "[${]{?([^}]*)");
+    pattern = pattern.replace(/\[\$\{\]\(\[\^}]\*\)/g, "[${]{?([^}]*)");
   }
 
   // Normalize Vim's "[^]]" class (anything but ]) into a JS-safe escape
@@ -202,10 +284,16 @@ enum TokenType {
   NUMBER,
   IDENTIFIER,
   OPERATOR,
+  COMPARATOR, // ==, !=, >, <, >=, <=
+  QUESTION, // ?
+  COLON, // :
   COMMA,
   LPAREN,
   RPAREN,
   BACKREF,
+  STAR, // *
+  SLASH, // /
+  PERCENT, // %
   EOF,
 }
 
@@ -242,15 +330,83 @@ export function evaluateVimExpression(
       } else if (char === "'" || char === '"') {
         const quote = consume();
         let str = "";
-        while (peek() !== quote && peek() !== "") {
-          if (peek() === "\\") {
-            consume();
-            str += consume();
-          } else {
-            str += consume();
+        if (quote === "'") {
+          // Single quoted string: literal, only '' is escape for '
+          while (peek() !== "" && (peek() !== "'" || peek(1) === "'")) {
+            if (peek() === "'" && peek(1) === "'") {
+              consume();
+              consume();
+              str += "'";
+            } else {
+              str += consume();
+            }
+          }
+        } else {
+          // Double quoted string: supports backslash escapes
+          while (peek() !== '"' && peek() !== "") {
+            if (peek() === "\\") {
+              consume();
+              const next = peek();
+              if (/\d/.test(next)) {
+                // Octal \123 (1-3 digits) or \1 (1 digit)
+                let numStr = "";
+                let count = 0;
+                while (count < 3 && /\d/.test(peek())) {
+                  numStr += consume();
+                  count++;
+                }
+                str += String.fromCharCode(parseInt(numStr, 8));
+              } else if (next === "x" || next === "u" || next === "U") {
+                consume(); // skip x/u/U
+                const hexLen = next === "x" ? 2 : next === "u" ? 4 : 8;
+                let hex = "";
+                for (let i = 0; i < hexLen; i++) {
+                  if (/[0-9a-fA-F]/.test(peek())) hex += consume();
+                  else break;
+                }
+                if (hex) str += String.fromCharCode(parseInt(hex, 16));
+              } else {
+                const escaped = consume();
+                switch (escaped) {
+                  case "b":
+                    str += "\b";
+                    break;
+                  case "e":
+                    str += "\x1b";
+                    break;
+                  case "f":
+                    str += "\f";
+                    break;
+                  case "n":
+                    str += "\n";
+                    break;
+                  case "r":
+                    str += "\r";
+                    break;
+                  case "t":
+                    str += "\t";
+                    break;
+                  case "\\":
+                    str += "\\";
+                    break;
+                  case '"':
+                    str += '"';
+                    break;
+                  default:
+                    str += escaped;
+                    break;
+                }
+              }
+            } else {
+              str += consume();
+            }
           }
         }
-        consume(); // quote
+
+        if (peek() !== quote) {
+          throw new Error("Unclosed string literal");
+        }
+        consume(); // closing quote
         tokens.push({ type: TokenType.STRING, value: str });
       } else if (char === "\\" && /\d/.test(peek(1) || "")) {
         consume(); // backslash
@@ -265,9 +421,37 @@ export function evaluateVimExpression(
         let id = "";
         while (/[a-zA-Z0-9_:]/.test(peek())) id += consume();
         tokens.push({ type: TokenType.IDENTIFIER, value: id });
+      } else if (["=", "!", ">", "<"].includes(char)) {
+        // Potential multi-char operators: ==, !=, >=, <=
+        if (peek(1) === "=") {
+          const first = consume();
+          const second = consume();
+          tokens.push({ type: TokenType.COMPARATOR, value: first + second });
+        } else if (char === "=") {
+          consume();
+          tokens.push({ type: TokenType.OPERATOR, value: char });
+        } else {
+          consume();
+          tokens.push({ type: TokenType.COMPARATOR, value: char });
+        }
       } else if (char === "." || char === "+" || char === "-") {
         consume();
         tokens.push({ type: TokenType.OPERATOR, value: char });
+      } else if (char === "*") {
+        consume();
+        tokens.push({ type: TokenType.STAR, value: "*" });
+      } else if (char === "/") {
+        consume();
+        tokens.push({ type: TokenType.SLASH, value: "/" });
+      } else if (char === "%") {
+        consume();
+        tokens.push({ type: TokenType.PERCENT, value: "%" });
+      } else if (char === "?") {
+        consume();
+        tokens.push({ type: TokenType.QUESTION, value: "?" });
+      } else if (char === ":") {
+        consume();
+        tokens.push({ type: TokenType.COLON, value: ":" });
       } else if (char === "(") {
         consume();
         tokens.push({ type: TokenType.LPAREN, value: "(" });
@@ -290,15 +474,59 @@ export function evaluateVimExpression(
   let tokenPos = 0;
 
   function peekToken(): Token {
-    return tokens[tokenPos];
+    return tokens[tokenPos] || { type: TokenType.EOF, value: "" };
   }
 
   function consumeToken(): Token {
-    return tokens[tokenPos++];
+    return tokens[tokenPos++] || { type: TokenType.EOF, value: "" };
   }
 
   function parseExpression(): VimValue {
-    return parseConcat();
+    return parseTernary();
+  }
+
+  function parseTernary(): VimValue {
+    const condition = parseComparison();
+    if (peekToken().type === TokenType.QUESTION) {
+      consumeToken(); // ?
+      const trueVal = parseTernary(); // Right-associative
+      if (peekToken().type === TokenType.COLON) {
+        consumeToken(); // :
+        const falseVal = parseTernary();
+
+        const condStr = asString(condition);
+        const isTrue =
+          condStr === "1" ||
+          condStr === "true" ||
+          (condStr.length > 0 && condStr !== "0");
+
+        return isTrue ? trueVal : falseVal;
+      }
+      return trueVal;
+    }
+    return condition;
+  }
+
+  function parseComparison(): VimValue {
+    let left = parseConcat();
+    while (peekToken().type === TokenType.COMPARATOR) {
+      const op = consumeToken().value;
+      const right = parseConcat();
+
+      const leftStr = asString(left);
+      const rightStr = asString(right);
+
+      let result = false;
+      if (op === "==") result = leftStr == rightStr;
+      else if (op === "!=") result = leftStr != rightStr;
+      else if (op === ">") result = leftStr > rightStr;
+      else if (op === "<") result = leftStr < rightStr;
+      else if (op === ">=") result = leftStr >= rightStr;
+      else if (op === "<=") result = leftStr <= rightStr;
+
+      left = result ? "1" : "0";
+    }
+    return left;
   }
 
   function parseConcat(): VimValue {
@@ -315,13 +543,13 @@ export function evaluateVimExpression(
   }
 
   function parseAddSub(): VimValue {
-    let left = parseTerm();
+    let left = parseMultDiv();
     while (
       peekToken().type === TokenType.OPERATOR &&
       (peekToken().value === "+" || peekToken().value === "-")
     ) {
       const op = consumeToken().value;
-      const right = parseTerm();
+      const right = parseMultDiv();
       const leftNum = parseFloat(asString(left));
       const rightNum = parseFloat(asString(right));
       const result =
@@ -333,6 +561,61 @@ export function evaluateVimExpression(
       left = result.toString();
     }
     return left;
+  }
+
+  function parseMultDiv(): VimValue {
+    let left = parseTerm();
+    while (
+      peekToken().type === TokenType.STAR ||
+      peekToken().type === TokenType.SLASH ||
+      peekToken().type === TokenType.PERCENT
+    ) {
+      const op = consumeToken().value;
+      const right = parseTerm();
+      const leftNum = parseFloat(asString(left));
+      const rightNum = parseFloat(asString(right));
+
+      let result = NaN;
+      if (!isNaN(leftNum) && !isNaN(rightNum)) {
+        if (op === "*") result = leftNum * rightNum;
+        else if (op === "/") result = rightNum !== 0 ? leftNum / rightNum : 0;
+        else if (op === "%") result = rightNum !== 0 ? leftNum % rightNum : 0;
+      }
+      left = isNaN(result) ? "0" : result.toString();
+    }
+    return left;
+  }
+
+  function vimStrptime(format: string, dateStr: string): number {
+    // Basic implementation for %Y-%m-%d
+    // Vim returns seconds since epoch
+    // TODO: Full implementation would require a library or complex parsing
+    // For now, handle ISO-like dates which Date.parse accepts, or manual parsing
+    if (format === "%Y-%m-%d") {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const d = new Date(
+          parseInt(parts[0], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[2], 10)
+        );
+        return Math.floor(d.getTime() / 1000);
+      }
+    }
+    // Fallback?
+    return 0;
+  }
+
+  function vimStrftime(format: string, timestamp: number): string {
+    const d = new Date(timestamp * 1000);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return format
+      .replace(/%Y/g, d.getFullYear().toString())
+      .replace(/%m/g, pad(d.getMonth() + 1))
+      .replace(/%d/g, pad(d.getDate()))
+      .replace(/%H/g, pad(d.getHours()))
+      .replace(/%M/g, pad(d.getMinutes()))
+      .replace(/%S/g, pad(d.getSeconds()));
   }
 
   function parseFunctionCall(name: string): VimValue {
@@ -351,97 +634,136 @@ export function evaluateVimExpression(
     if (peekToken().type === TokenType.RPAREN) consumeToken();
 
     const lower = name.toLowerCase();
+    // console.log("Call:", lower, args);
+    let res: VimValue = "";
     switch (lower) {
       case "submatch": {
         const idxRaw = asString(args[0] ?? "0");
         const idx = Number(idxRaw);
-        if (Number.isNaN(idx)) return "";
-        if (idx === 0) return context.match ?? "";
-        return context.groups?.[idx - 1] ?? "";
+        if (Number.isNaN(idx)) {
+          res = "";
+          break;
+        }
+        if (idx === 0) {
+          res = context.match ?? "";
+          break;
+        }
+        res = context.groups?.[idx - 1] ?? "";
+        break;
       }
       case "split": {
         const target = asString(args[0] ?? "");
         const sep = args.length > 1 ? asString(args[1]) : "";
-        return target.split(sep);
+        res = target.split(sep);
+        break;
       }
       case "reverse": {
         const target = args[0];
-        if (Array.isArray(target)) return [...target].reverse();
-        return asString(target ?? "")
+        if (Array.isArray(target)) {
+          res = [...target].reverse();
+          break;
+        }
+        res = asString(target ?? "")
           .split("")
           .reverse();
+        break;
       }
       case "join": {
         const list = args[0];
         const sep = asString(args[1] ?? "");
-        if (Array.isArray(list)) return list.join(sep);
-        return asString(list ?? "");
+        if (Array.isArray(list)) {
+          res = list.join(sep);
+          break;
+        }
+        res = asString(list ?? "");
+        break;
+      }
+      case "strptime": {
+        res = vimStrptime(asString(args[0]), asString(args[1])).toString();
+        break;
+      }
+      case "strftime": {
+        res = vimStrftime(asString(args[0]), parseFloat(asString(args[1])));
+        break;
       }
       case "line": {
         const raw = asString(args[0] ?? ".");
-        if (raw === "." || raw === "") return context.line.toString();
+        if (raw === "." || raw === "") {
+          res = context.line.toString();
+          break;
+        }
         const num = parseInt(raw, 10);
-        return Number.isFinite(num) ? num.toString() : context.line.toString();
+        res = Number.isFinite(num) ? num.toString() : context.line.toString();
+        break;
       }
       case "pi": {
-        return PI_DIGITS;
+        res = PI_DIGITS;
+        break;
       }
       default:
-        return "";
+        res = "";
     }
+    // console.log("Ret:", lower, res);
+    return res;
   }
 
   function parseTerm(): VimValue {
     const token = peekToken();
-    
-    if (token.type === TokenType.OPERATOR && (token.value === "-" || token.value === "+")) {
+
+    if (
+      token.type === TokenType.OPERATOR &&
+      (token.value === "+" || token.value === "-")
+    ) {
       consumeToken();
       const val = parseTerm();
-      const num = parseFloat(asString(val));
-      if (token.value === "-") {
-        return isNaN(num) ? "0" : (-num).toString();
-      }
-      return isNaN(num) ? "0" : num.toString();
+      const num = (token.value === "-" ? -1 : 1) * parseFloat(asString(val));
+      return num.toString();
     }
 
-    consumeToken();
-    if (token.type === TokenType.STRING) {
+    if (token.type === TokenType.NUMBER) {
+      consumeToken();
       return token.value;
-    } else if (token.type === TokenType.NUMBER) {
-      let val = parseInt(token.value, 10);
-      return val.toString();
-    } else if (token.type === TokenType.BACKREF) {
+    }
+
+    if (token.type === TokenType.STRING) {
+      consumeToken();
+      return token.value;
+    }
+
+    if (token.type === TokenType.BACKREF) {
+      consumeToken();
       const ref = parseInt(token.value, 10);
-      const val = context.groups && context.groups[ref - 1];
-      return val ?? "";
-    } else if (token.type === TokenType.IDENTIFIER) {
+      return context.groups && context.groups[ref - 1]
+        ? context.groups[ref - 1]!
+        : "";
+    }
+
+    if (token.type === TokenType.IDENTIFIER) {
+      consumeToken();
       const lower = token.value.toLowerCase();
-      const hasParens = peekToken().type === TokenType.LPAREN;
-      if (hasParens) {
+
+      // Variable handling
+      if (token.value === "v:lnum") return context.line.toString();
+      if (token.value === "v:count1") return "1"; // Default for debug
+      if (lower === "pi") return PI_DIGITS;
+
+      // Function call
+      if (peekToken().type === TokenType.LPAREN) {
         return parseFunctionCall(lower);
       }
-      if (lower === "pi") {
-        return PI_DIGITS;
-      }
-      if (token.value === "line") {
-        if (peekToken().type === TokenType.LPAREN) {
-          consumeToken();
-          const arg = parseExpression(); // Argument to line()
-          consumeToken(); // RPAREN
-          if (arg === ".") return context.line.toString();
-          // TODO: Handle other line() args
-          return context.line.toString();
-        }
-      } else if (token.value === "v:lnum") {
-        const ln = context.line ?? 1;
-        return (ln <= 0 ? ln + 1 : ln).toString();
-      }
-      return "";
-    } else if (token.type === TokenType.LPAREN) {
+
+      return token.value;
+    }
+
+    if (token.type === TokenType.LPAREN) {
+      consumeToken();
       const val = parseExpression();
-      consumeToken(); // RPAREN
+      if (peekToken().type === TokenType.RPAREN) consumeToken();
       return val;
     }
+
+    // consume unexpected
+    if (token.type !== TokenType.EOF) consumeToken();
     return "";
   }
 
@@ -550,11 +872,13 @@ export type ExCommandHelpers = {
   executeKeystroke: (s: VimState, k: string) => VimState;
   tokenizeKeystrokes: (ks: string) => string[];
   /**
-   * Optional shell runner for :r ! commands. Provide this only in
+   * Optional shell runner for :r ! and filter commands. Provide this only in
    * environments where shell access is allowed (e.g. server). Client
    * bundles should omit it to avoid pulling in node built-ins.
+   * @param cmd - The shell command to run
+   * @param stdin - Optional input to pipe to the command's stdin
    */
-  runShellCommand?: (cmd: string) => string;
+  runShellCommand?: (cmd: string, stdin?: string) => string;
 };
 
 export function executeExCommand(
@@ -884,7 +1208,9 @@ export function executeExCommand(
     let output: string | null = runBuiltInFilter(shellCmdRaw, selected);
     if (!output && helpers?.runShellCommand) {
       try {
-        output = helpers.runShellCommand(shellCmdRaw) ?? "";
+        // Pass selected lines as stdin to the shell command
+        const inputText = selected.join("\n");
+        output = helpers.runShellCommand(shellCmdRaw, inputText) ?? "";
       } catch (e) {
         console.error("[VimEngine] :! filter command failed", e);
         finishCommand(state);
@@ -1147,9 +1473,7 @@ export function executeExCommand(
     pattern = vimToJsRegex(pattern);
 
     const isExpression = rawReplacement.startsWith("\\=");
-    const exprBody = isExpression
-      ? rawReplacement.slice(2).replace(/\\([^\d])/g, "$1")
-      : null;
+    const exprBody = isExpression ? rawReplacement.slice(2) : null;
     const replaceFn = isExpression
       ? null
       : buildVimReplacementFn(rawReplacement);
@@ -1166,13 +1490,20 @@ export function executeExCommand(
       // STRICT PARITY MODE: Evidence from replay_all shows nvim DOES match \n{2,} patterns.
       // So we must enable this optimization to match parity.
       if (hasNewline && !isExpression && (rangeStr === "%" || !rangeStr)) {
-        const fullText = state.lines.join("\n");
+        // Join lines with newline AND add trailing newline to match vim's internal
+        // representation where each line conceptually ends with a newline
+        const fullText = state.lines.join("\n") + "\n";
         // Force 'g' because we are applying to all lines (implicit global if range is %)
         const joinedRegexFlags = "gm" + (caseInsensitive ? "i" : "");
         const joinedRegex = buildSafeRegex(pattern, joinedRegexFlags);
         if (joinedRegex) {
           const newText = fullText.replace(joinedRegex, replaceFn!);
-          state.lines = newText.split("\n");
+          // Split and remove trailing empty element if present
+          let newLines = newText.split("\n");
+          if (newLines[newLines.length - 1] === "") {
+            newLines = newLines.slice(0, -1);
+          }
+          state.lines = newLines.length > 0 ? newLines : [""];
           clampCursor(state);
           finishCommand(state);
           // If we solved it via join, return.
@@ -1204,43 +1535,58 @@ export function executeExCommand(
         let lastChangedRelativeIndex = -1;
         let cumulativeLines = 0;
         const newLinesFragment: string[] = [];
+        let aborted = false;
 
-        for (let i = startLine; i <= endLine; i++) {
-          const line = state.lines[i] ?? "";
-          const newLine = line.replace(
-            lineRegex,
-            (match: string, ...rest: (string | undefined)[]) => {
-              const groups = rest.slice(0, -2) as (string | undefined)[];
-              return evaluateVimExpression(exprBody || "", {
-                line: i + 1,
-                match,
-                groups,
-              });
+        try {
+          for (let i = startLine; i <= endLine; i++) {
+            const line = state.lines[i] ?? "";
+            const newLine = line.replace(
+              lineRegex,
+              (match: string, ...rest: (string | undefined)[]) => {
+                const groups = rest.slice(0, -2) as (string | undefined)[];
+                return evaluateVimExpression(exprBody || "", {
+                  line: i + 1,
+                  match,
+                  groups,
+                });
+              }
+            );
+
+            if (newLine !== line) {
+              lastChangedRelativeIndex = cumulativeLines;
             }
-          );
-          
-          if (newLine !== line) {
-            lastChangedRelativeIndex = cumulativeLines;
-          }
-          
-          const parts = newLine.includes("\n") ? newLine.split("\n") : [newLine];
-          newLinesFragment.push(...parts);
-          cumulativeLines += parts.length;
-        }
-        
-        state.lines.splice(
-          startLine,
-          endLine - startLine + 1,
-          ...newLinesFragment
-        );
 
-        if (lastChangedRelativeIndex !== -1) {
-          state.cursorLine = startLine + lastChangedRelativeIndex;
-          state.cursorCol = 0; // Vim usually places cursor at start of line
-        } else {
-          state.cursorLine = Math.min(originalCursorLine, state.lines.length - 1);
-          const maxCol = (state.lines[state.cursorLine]?.length || 1) - 1;
-          state.cursorCol = Math.max(0, Math.min(originalCursorCol, maxCol));
+            const parts = newLine.includes("\n")
+              ? newLine.split("\n")
+              : [newLine];
+            newLinesFragment.push(...parts);
+            cumulativeLines += parts.length;
+          }
+        } catch (e: any) {
+          console.warn(
+            `[VimEngine] Expression substitution failed: ${e.message}`
+          );
+          aborted = true;
+        }
+
+        if (!aborted) {
+          state.lines.splice(
+            startLine,
+            endLine - startLine + 1,
+            ...newLinesFragment
+          );
+
+          if (lastChangedRelativeIndex !== -1) {
+            state.cursorLine = startLine + lastChangedRelativeIndex;
+            state.cursorCol = 0; // Vim usually places cursor at start of line
+          } else {
+            state.cursorLine = Math.min(
+              originalCursorLine,
+              state.lines.length - 1
+            );
+            const maxCol = (state.lines[state.cursorLine]?.length || 1) - 1;
+            state.cursorCol = Math.max(0, Math.min(originalCursorCol, maxCol));
+          }
         }
       } else {
         // STRICT PARITY: Always operate line-by-line.
@@ -1254,9 +1600,9 @@ export function executeExCommand(
           const line = state.lines[i] ?? "";
           // Note: lineRegex is global if /g was passed
           const newLine = line.replace(lineRegex, replaceFn!);
-          
+
           if (newLine !== line) {
-             lastChangedRelativeIndex = cumulativeLines;
+            lastChangedRelativeIndex = cumulativeLines;
           }
 
           if (newLine.includes("\n")) {
@@ -1279,7 +1625,10 @@ export function executeExCommand(
           state.cursorLine = startLine + lastChangedRelativeIndex;
           state.cursorCol = 0;
         } else {
-          state.cursorLine = Math.min(originalCursorLine, state.lines.length - 1);
+          state.cursorLine = Math.min(
+            originalCursorLine,
+            state.lines.length - 1
+          );
           const maxCol = (state.lines[state.cursorLine]?.length || 1) - 1;
           state.cursorCol = Math.max(0, Math.min(originalCursorCol, maxCol));
         }

@@ -95,9 +95,8 @@ export default function ChallengePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dataParam = useMemo(() => searchParams.get("data"), [searchParams]);
-  const [selectedModels, setSelectedModels] = useState<string[]>(() =>
-    availableModels.map((m) => m.id)
-  );
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
   const [results, setResults] = useState<RunResult[]>([]);
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +123,6 @@ export default function ChallengePage() {
           setError("Failed to parse custom challenge data");
         }
       }
-    } else if (id === "daily") {
-      // For daily challenge, auto-select all models to simulate the "battle"
-      setSelectedModels(Object.keys(MODEL_NAMES));
     }
   }, [id, dataParam]);
 
@@ -157,6 +153,26 @@ export default function ChallengePage() {
       router.replace(`/challenge/${challenge.id}`);
     }
   }, [id, isLoading, challenge?.id, router]);
+
+  // Initialize selected models to only include models with cached data
+  useEffect(() => {
+    if (hasInitializedSelection) return;
+
+    if (id === "custom") {
+      // For custom challenges, select all models (all require API key anyway)
+      setSelectedModels(availableModels.map((m) => m.id));
+      setHasInitializedSelection(true);
+    } else if (!isLoading && data?.cacheStatus) {
+      // For regular challenges, only select models that have cached data
+      const cachedModelIds = availableModels
+        .map((m) => m.id)
+        .filter(
+          (modelId) => !data.cacheStatus!.missingModelIds.includes(modelId)
+        );
+      setSelectedModels(cachedModelIds);
+      setHasInitializedSelection(true);
+    }
+  }, [id, isLoading, data, hasInitializedSelection]);
 
   const handleResultsComplete = useCallback(
     (newResults: RunResult[]) => {

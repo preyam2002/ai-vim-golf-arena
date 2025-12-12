@@ -119,11 +119,10 @@ export function LiveArena({
   }, [onResultsComplete]);
 
   const handleRun = useCallback(() => {
-    if (apiKeyMissing) return;
     resetState();
     setRunStartedAt(Date.now());
     setIsRunning(true);
-  }, [apiKeyMissing, resetState]);
+  }, [resetState]);
 
   const handleReset = useCallback(() => {
     setIsRunning(false);
@@ -174,7 +173,7 @@ export function LiveArena({
           <div className="h-10 w-10 rounded-xl border border-white/10 bg-linear-to-br from-primary/20 to-accent/20 text-primary shadow-inner shadow-black/40" />
           <button
             onClick={handleRun}
-            disabled={isRunning || selectedModels.length === 0 || apiKeyMissing}
+            disabled={isRunning || selectedModels.length === 0}
             className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-primary to-emerald-400 px-6 py-2.5 font-semibold text-primary-foreground shadow-[0_15px_50px_-28px_var(--primary)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-18px_var(--primary)] disabled:translate-y-0 disabled:opacity-50"
           >
             {isRunning ? (
@@ -274,6 +273,8 @@ export function LiveArena({
               onProgress={handleModelProgress}
               challengeId={challenge.id}
               apiKey={apiKey}
+              totalModels={selectedModels.filter((id) => id !== "user").length}
+              requiresApiKey={missingModelIds.includes(modelId)}
               onAbort={() =>
                 setAbortedModels((prev) => {
                   const next = new Set(prev);

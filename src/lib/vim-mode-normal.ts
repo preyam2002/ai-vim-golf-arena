@@ -1241,6 +1241,32 @@ export function handleNormalModeKeystroke(
           clampCursor(state);
         }
         break;
+      case "{":
+        {
+          // Move backward to beginning of paragraph (previous blank line)
+          let l = state.cursorLine;
+          while (l > 0) {
+            l--;
+            if (state.lines[l].trim() === "") break;
+          }
+          state.cursorLine = l;
+          state.cursorCol = 0;
+          clampCursor(state);
+        }
+        break;
+      case "}":
+        {
+          // Move forward to end of paragraph (next blank line)
+          let l = state.cursorLine;
+          while (l < state.lines.length - 1) {
+            l++;
+            if (state.lines[l].trim() === "") break;
+          }
+          state.cursorLine = l;
+          state.cursorCol = 0;
+          clampCursor(state);
+        }
+        break;
       case "H": {
         const target = state.countBuffer
           ? Math.max(0, parseInt(state.countBuffer, 10) - 1)

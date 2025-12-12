@@ -31,37 +31,8 @@ export async function OPTIONS() {
   });
 }
 
-const SYSTEM_PROMPT = `You are an expert Vim golfer competing for the MINIMUM keystroke count. Every keystroke matters.
-
-CRITICAL RULES:
-1. Output ONLY raw Vim keystrokes - NO markdown, NO code blocks, NO quotes, NO explanations
-2. Use standard Vim notation: <Esc>, <CR>, <BS> for special keys
-3. BE EXTREMELY EFFICIENT - use regex substitutions, global commands, and macros
-4. NEVER generate repetitive sequences like jddjddjdd... - use ranges and commands instead
-5. Maximum ~100 keystrokes for most challenges - think before you type
-6. Cursor starts at 0,0 in Normal mode
-
-EFFICIENCY EXAMPLES:
-BAD (manual edits):  jddjddjddjdd... (50+ keystrokes)
-GOOD (one command):  :3,6d<CR> (8 keystrokes)
-
-BAD (manual):        cwfoo<Esc>jcwfoo<Esc>jcwfoo<Esc>
-GOOD (substitute):   :%s/old/foo/g<CR>
-
-BAD (line by line):  dddddddddd (delete 10 lines manually)
-GOOD (range):        :1,10d<CR> or 10dd
-
-For merge conflicts, use global commands:
-:%g/^<<<<<<</d<CR>      Delete conflict markers
-:%g/^=======/d<CR>      Delete separators  
-:%g/^>>>>>>>/d<CR>      Delete end markers
-
-Think: "What's the SHORTEST vim command sequence to achieve this?"
-
-Valid output format (plain text, no wrapping):
-:%s/old/new/g<CR>
-ggdG
-3dd`;
+// System prompt and prompting logic is now in ai-gateway.ts
+// This route uses callAIGateway which handles all prompting internally
 
 export async function POST(request: NextRequest) {
   try {
@@ -84,15 +55,9 @@ export async function POST(request: NextRequest) {
 
 async function handleStreamPost(request: NextRequest) {
   const body = await request.json();
-  const {
-    startText,
-    targetText,
-    modelId,
-    challengeId,
-    apiKey: userApiKey,
-  } = body;
-  const systemApiKey = process.env.AI_GATEWAY_API_KEY;
-  const effectiveApiKey = userApiKey || systemApiKey;
+  const { startText, targetText, modelId, challengeId } = body;
+  // AI SDK uses provider-specific env vars (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+  // No unified API key needed anymore
 
   if (!startText || !targetText || !modelId) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -165,11 +130,12 @@ async function handleStreamPost(request: NextRequest) {
     );
   }
 
-  // Any generation path requires an apiKey when cache is missing
-  if (!effectiveApiKey) {
+  // AI Gateway uses a single API key for all providers
+  if (!process.env.AI_GATEWAY_API_KEY) {
     return new Response(
       JSON.stringify({
-        error: "apiKey is required when no cached solution exists",
+        error:
+          "Missing API key: AI_GATEWAY_API_KEY environment variable is not set",
         debug: { challengeId, dailyId, isDaily, isDefault },
       }),
       {
@@ -179,32 +145,15 @@ async function handleStreamPost(request: NextRequest) {
     );
   }
 
-  const prompt = `START TEXT:
-\`\`\`
-${startText}
-\`\`\`
-
-TARGET TEXT:
-\`\`\`
-${targetText}
-\`\`\`
-
-Return ONLY the Vim keystrokes to transform START into TARGET.
-Do not include markdown, quotes, explanations, or extra lines.`;
-
   try {
     const startTime = Date.now();
     console.log(
-      `[stream] invoking AI gateway challenge=${
+      `[stream] invoking AI SDK challenge=${
         challengeId ?? "custom"
       } model=${modelId}`
     );
-    const keystrokes = await callAIGateway(
-      modelId,
-      startText,
-      targetText,
-      effectiveApiKey
-    );
+    // callAIGateway now uses AI SDK internally with provider env vars
+    const keystrokes = await callAIGateway(modelId, startText, targetText);
     const cleanedKeystrokes = cleanKeystrokes(keystrokes);
     if (!cleanedKeystrokes.trim()) {
       return new Response(

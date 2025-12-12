@@ -19,6 +19,26 @@ export function handleVisualModeKeystroke(
   state: VimState,
   keystroke: string
 ): VimState {
+  const getVisualRange = () => {
+    if (!state.visualStart) return null;
+
+    let startLine = state.visualStart.line;
+    let startCol = state.visualStart.col;
+    let endLine = state.cursorLine;
+    let endCol = state.cursorCol;
+
+    if (endLine < startLine || (endLine === startLine && endCol < startCol)) {
+      [startLine, startCol, endLine, endCol] = [
+        endLine,
+        endCol,
+        startLine,
+        startCol,
+      ];
+    }
+
+    return { startLine, startCol, endLine, endCol };
+  };
+
   if (keystroke === "<Esc>" || keystroke === "<ESC>") {
     const range = state.visualStart
       ? {
@@ -67,6 +87,83 @@ export function handleVisualModeKeystroke(
     return state;
   }
 
+  // Handle pending 'r' (replace) in visual mode
+  if (state.pendingOperator === "r") {
+    state.pendingOperator = null;
+    const char = keystroke;
+    // Special keys like <Esc> abort?
+    if (char === "<Esc>" || char === "<ESC>") {
+      state.mode = "normal";
+      return state;
+    }
+
+    // Enter key generally replaces with CR? Or is it literal?
+    // Vim r<CR> replaces with newline.
+    // Normalized keystroke for Enter is <CR> or \r depending on parity.
+    const replaceChar = char === "<CR>" || char === "\r" ? "\n" : char;
+
+    const range = getVisualRange();
+    if (range) {
+      saveUndo(state);
+      const startCol = Math.min(range.startCol, range.endCol);
+      const endCol = Math.max(range.startCol, range.endCol);
+      const ragged = state.visualBlockRagged;
+
+      let endLine = range.endLine;
+      if (state.mode === "visual-block" && ragged) {
+        endLine = Math.min(state.lines.length - 1, range.endLine + 1);
+      }
+
+      for (let line = range.startLine; line <= endLine; line++) {
+        const text = state.lines[line] || "";
+
+        let sliceStart: number, sliceEnd: number;
+        if (state.mode === "visual-line") {
+          sliceStart = 0;
+          sliceEnd = text.length - 1;
+        } else if (state.mode === "visual-block") {
+          sliceStart = Math.min(startCol, text.length);
+          sliceEnd = ragged
+            ? text.length - 1
+            : Math.min(endCol, text.length - 1);
+        } else {
+          // Visual char
+          if (line === range.startLine && line === range.endLine) {
+            sliceStart = startCol;
+            sliceEnd = endCol;
+          } else if (line === range.startLine) {
+            sliceStart = startCol;
+            sliceEnd = text.length - 1;
+          } else if (line === range.endLine) {
+            sliceStart = 0;
+            sliceEnd = endCol;
+          } else {
+            sliceStart = 0;
+            sliceEnd = text.length - 1;
+          }
+        }
+
+        if (sliceStart > sliceEnd || sliceStart >= text.length) continue;
+
+        // Replace slice with repeated char
+        const options = { count: sliceEnd - sliceStart + 1 };
+        const replacement = replaceChar.repeat(options.count);
+        state.lines[line] =
+          text.slice(0, sliceStart) + replacement + text.slice(sliceEnd + 1);
+      }
+    }
+
+    state.mode = "normal";
+    state.visualStart = null;
+    state.visualBlockRagged = false;
+    // Restore cursor to start of range
+    if (range) {
+      state.cursorLine = range.startLine;
+      state.cursorCol = range.startCol;
+    }
+    return state;
+  }
+
   // Count prefixes in visual modes (e.g., V9j).
   if (/^[1-9]$/.test(keystroke) || (keystroke === "0" && state.countBuffer)) {
     state.countBuffer += keystroke;
@@ -92,25 +189,6 @@ export function handleVisualModeKeystroke(
   }
 
   // Get visual selection range
-  const getVisualRange = () => {
-    if (!state.visualStart) return null;
-
-    let startLine = state.visualStart.line;
-    let startCol = state.visualStart.col;
-    let endLine = state.cursorLine;
-    let endCol = state.cursorCol;
-
-    if (endLine < startLine || (endLine === startLine && endCol < startCol)) {
-      [startLine, startCol, endLine, endCol] = [
-        endLine,
-        endCol,
-        startLine,
-        startCol,
-      ];
-    }
-
-    return { startLine, startCol, endLine, endCol };
-  };
 
   let range = getVisualRange();
 
@@ -162,7 +240,7 @@ export function handleVisualModeKeystroke(
         return { start: i, end: j };
       };
 
-      let seq = 1;
+      let seq = 0;
       let changed = false;
 
       // Only save undo if we actually change something
@@ -177,7 +255,7 @@ export function handleVisualModeKeystroke(
           text.slice(numberSpan.start, numberSpan.end),
           10
         );
-        
+
         if (Number.isNaN(currentVal)) continue;
 
         if (!changed) saveUndo(state);
@@ -768,6 +846,7 @@ export function handleVisualModeKeystroke(
       );
       break;
     }
+    case "r":
     case "f":
     case "F":
     case "t":

@@ -400,6 +400,48 @@ export function handleInsertModeKeystroke(
     return state;
   }
 
+  // Handle multi-character tokens that may contain embedded special keys like <Esc>
+  // This can happen when the tokenizer bundles insert text with following commands
+  if (keystroke.length > 1 && !keystroke.startsWith("<")) {
+    // The token may contain embedded special keys like <Esc>, <CR>, etc.
+    // We need to split and process each part
+    let i = 0;
+    while (i < keystroke.length && state.mode === "insert") {
+      if (keystroke[i] === "<") {
+        // Find the end of the special key
+        const end = keystroke.indexOf(">", i);
+        if (end !== -1) {
+          const specialKey = keystroke.slice(i, end + 1);
+          state = handleInsertModeKeystroke(state, specialKey);
+          i = end + 1;
+          continue;
+        }
+      }
+      // Regular character
+      insertCharacter(keystroke[i]);
+      i++;
+    }
+    // If we exited insert mode mid-token, process remaining chars in normal mode
+    if (i < keystroke.length && state.mode !== "insert") {
+      const remaining = keystroke.slice(i);
+      // Process remaining keystrokes in normal mode via executeKeystroke
+      for (let j = 0; j < remaining.length && state.mode !== "insert"; ) {
+        if (remaining[j] === "<") {
+          const end = remaining.indexOf(">", j);
+          if (end !== -1) {
+            const specialKey = remaining.slice(j, end + 1);
+            state = executeKeystroke(state, specialKey);
+            j = end + 1;
+            continue;
+          }
+        }
+        state = executeKeystroke(state, remaining[j]);
+        j++;
+      }
+    }
+    return state;
+  }
+
   if (keystroke.length === 1) {
     insertCharacter(keystroke);
   }

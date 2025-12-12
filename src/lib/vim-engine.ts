@@ -87,7 +87,16 @@ export function createInitialState(
   text: string,
   options?: Partial<VimOptions>
 ): VimState {
-  const lines = text.split("\n");
+  // Split into lines, but handle trailing newline like vim does:
+  // "line1\nline2\n" should be 2 lines, not 3 (trailing newline is terminator, not new line)
+  let lines = text.split("\n");
+  if (
+    lines.length > 1 &&
+    lines[lines.length - 1] === "" &&
+    text.endsWith("\n")
+  ) {
+    lines = lines.slice(0, -1);
+  }
   const mergedOptions = mergeOptions(options);
   return {
     lines: lines.length > 0 ? lines : [""],
@@ -240,8 +249,14 @@ export function executeKeystrokeInternal(
     }
   }
 
-  // Handle Ex Commands (e.g. :%s/...<CR>)
-  if (keystroke.startsWith(":") && keystroke.endsWith("<CR>")) {
+  // Handle Ex Commands (e.g. :%s/...<CR>) - but only when NOT in insert/replace mode
+  // In insert mode, a colon is just a character to be inserted
+  if (
+    keystroke.startsWith(":") &&
+    keystroke.endsWith("<CR>") &&
+    newState.mode !== "insert" &&
+    newState.mode !== "replace"
+  ) {
     const nextState = executeExCommand(newState, keystroke, {
       executeKeystroke,
       tokenizeKeystrokes,
@@ -310,14 +325,30 @@ export function executeKeystrokeInternal(
 
   // In insert/replace modes, treat multi-char tokens (that aren't special keys)
   // as individual typed characters to avoid misinterpreting bundled motion tokens.
+  // But we need to preserve special key sequences like <Esc>, <CR>, etc.
   if (
     (newState.mode === "insert" || newState.mode === "replace") &&
     keystroke.length > 1 &&
     !keystroke.startsWith("<")
   ) {
     let tempState = newState;
-    for (const ch of keystroke.split("")) {
-      tempState = executeKeystroke(tempState, ch, helpers);
+    let i = 0;
+    while (i < keystroke.length) {
+      if (keystroke[i] === "<") {
+        // Preserve special key sequences like <Esc>, <CR>, etc.
+        const end = keystroke.indexOf(">", i);
+        if (end !== -1) {
+          tempState = executeKeystroke(
+            tempState,
+            keystroke.slice(i, end + 1),
+            helpers
+          );
+          i = end + 1;
+          continue;
+        }
+      }
+      tempState = executeKeystroke(tempState, keystroke[i], helpers);
+      i++;
     }
     return tempState;
   }

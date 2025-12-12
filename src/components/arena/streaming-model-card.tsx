@@ -19,7 +19,7 @@ import {
   type VimState,
 } from "@/lib/vim-engine";
 import { VimTextDisplay } from "./vim-text-display";
-import { cleanKeystrokes } from "@/lib/ai-gateway";
+import { cleanKeystrokes, availableModels } from "@/lib/ai-gateway";
 
 interface StreamingModelCardProps {
   modelId: string;
@@ -35,6 +35,8 @@ interface StreamingModelCardProps {
   challengeId?: string;
   apiKey?: string;
   onAbort?: () => void;
+  totalModels?: number;
+  requiresApiKey?: boolean;
 }
 
 export function StreamingModelCard({
@@ -51,7 +53,18 @@ export function StreamingModelCard({
   challengeId,
   apiKey,
   onAbort,
+  totalModels = 1,
+  requiresApiKey = false,
 }: StreamingModelCardProps) {
+  // Calculate editor height based on number of models
+  const editorHeight =
+    totalModels === 1
+      ? 300
+      : totalModels === 2
+      ? 250
+      : totalModels <= 4
+      ? 180
+      : 150;
   const [status, setStatus] = useState<
     "idle" | "streaming" | "verifying" | "complete"
   >("idle");
@@ -225,64 +238,87 @@ export function StreamingModelCard({
     [modelId, modelName, targetText, bestHumanScore]
   );
 
-  const processTokens = useCallback(
-    (tokens: string) => {
-      if (!simulatorRef.current) return;
+  // Buffer for incoming tokens to decouple stream speed from render speed
+  const processingQueueRef = useRef<string>("");
+  const isFinishedRef = useRef(false);
 
-      const sim = simulatorRef.current;
-      sim.rawInput += tokens;
-      rawKeystrokesRef.current = sim.rawInput;
+  // Helper to process buffered tokens - extracted so we can flush on finish
+  const processBufferedTokens = useCallback(() => {
+    if (!processingQueueRef.current || !simulatorRef.current) return;
 
-      // Sanitize input for simulation
-      // We need to handle markdown code blocks that might be partially streamed
-      let effectiveInput = sim.rawInput;
+    const chunk = processingQueueRef.current;
+    processingQueueRef.current = ""; // Clear buffer immediately
 
-      // Check for markdown code block start
-      const codeBlockStart = effectiveInput.match(/^```(?:vim|text)?\n/);
-      if (codeBlockStart) {
-        // We are inside a code block: remove the start tag
-        effectiveInput = effectiveInput.slice(codeBlockStart[0].length);
+    const sim = simulatorRef.current;
+    sim.rawInput += chunk;
+    rawKeystrokesRef.current = sim.rawInput;
 
-        // Check for end tag
-        const codeBlockEnd = effectiveInput.indexOf("\n```");
-        if (codeBlockEnd !== -1) {
-          // We have a closing tag, take everything up to it
-          effectiveInput = effectiveInput.slice(0, codeBlockEnd);
-        }
-      } else if (effectiveInput.startsWith("```")) {
-        // We have a start tag but not the full newline yet, or just the tag.
-        // Treat as empty to avoid executing backticks as commands.
-        effectiveInput = "";
+    let effectiveInput = sim.rawInput;
+
+    // Check for markdown code block start
+    const codeBlockStart = effectiveInput.match(/^```(?:vim|text)?\n/);
+    if (codeBlockStart) {
+      effectiveInput = effectiveInput.slice(codeBlockStart[0].length);
+      const codeBlockEnd = effectiveInput.indexOf("\n```");
+      if (codeBlockEnd !== -1) {
+        effectiveInput = effectiveInput.slice(0, codeBlockEnd);
       }
+    } else if (effectiveInput.startsWith("```")) {
+      effectiveInput = "";
+    }
 
-      // Process complete keystrokes from the sanitized input
-      // sim.processedIndex tracks the position within effectiveInput
-      while (sim.processedIndex < effectiveInput.length) {
-        const remaining = effectiveInput.slice(sim.processedIndex);
-        const keystroke = extractKeystroke(remaining, sim.vimState.mode);
-        if (!keystroke) break;
+    const newSteps: ReplayStep[] = [];
+    while (sim.processedIndex < effectiveInput.length) {
+      const remaining = effectiveInput.slice(sim.processedIndex);
+      const keystroke = extractKeystroke(remaining, sim.vimState.mode);
+      if (!keystroke) break;
 
-        // Execute keystroke and create step
-        sim.vimState = executeKeystroke(sim.vimState, keystroke);
+      sim.vimState = executeKeystroke(sim.vimState, keystroke);
+      const step: ReplayStep = {
+        keystroke,
+        text: sim.vimState.lines.join("\n"),
+        cursorLine: sim.vimState.cursorLine,
+        cursorCol: sim.vimState.cursorCol,
+        mode: sim.vimState.mode,
+        commandLine: sim.vimState.commandLine,
+      };
+      newSteps.push(step);
+      sim.processedIndex += keystroke.length;
+    }
 
-        const step: ReplayStep = {
-          keystroke,
-          text: sim.vimState.lines.join("\n"),
-          cursorLine: sim.vimState.cursorLine,
-          cursorCol: sim.vimState.cursorCol,
-          mode: sim.vimState.mode,
-          commandLine: sim.vimState.commandLine,
-        };
-
-        setSteps((prev) => [...prev, step]);
-        sim.processedIndex += keystroke.length;
+    if (newSteps.length > 0) {
+      setSteps((prev) => {
+        const next = [...prev, ...newSteps];
+        stepsRef.current = next; // Sync Ref immediately for finishSimulation
+        return next;
+      });
+      // Only emit "in-progress" if we aren't finished yet
+      if (!isFinishedRef.current) {
+        emitProgress();
       }
-      emitProgress();
-    },
-    [emitProgress]
-  );
+    }
+  }, [emitProgress]);
 
+  // Process buffered tokens at a fixed rate (30fps) to prevent render flooding
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(() => {
+      if (isFinishedRef.current) return;
+      processBufferedTokens();
+    }, 33); // ~30fps
+
+    return () => clearInterval(interval);
+  }, [isRunning, processBufferedTokens]);
+
+  // Finish simulation callback
   const finishSimulation = useCallback(async () => {
+    // Prevent any further progress updates from the interval
+    isFinishedRef.current = true;
+
+    // Flush any remaining tokens in the buffer
+    processBufferedTokens();
+
     stopTimer();
     setStatus("verifying");
 
@@ -312,8 +348,6 @@ export function StreamingModelCard({
 
     setSuccess(isSuccess);
     setStatus("complete");
-    // Switch to paused mode so user can replay if they want,
-    // but we stay at the end (which live mode did)
     setPlaybackMode("paused");
 
     const cleanedInput = cleanKeystrokes(currentRawInput);
@@ -345,10 +379,44 @@ export function StreamingModelCard({
       status: isSuccess ? "complete" : "failed",
     };
     onCompleteRef.current?.(result);
-  }, [startText, targetText, modelId, modelName, bestHumanScore]);
+  }, [
+    startText,
+    targetText,
+    modelId,
+    modelName,
+    bestHumanScore,
+    stopTimer,
+    processBufferedTokens,
+  ]);
 
   const startStreaming = useCallback(async () => {
+    // If this model requires an API key (not cached) but none was provided, fail immediately
+    if (requiresApiKey && !apiKey) {
+      stopTimer();
+      setError(
+        "No cached solution available. Provide an API key to generate one."
+      );
+      setStatus("complete");
+      setPlaybackMode("paused");
+
+      const result: RunResult = {
+        modelId,
+        modelName,
+        keystrokes: "",
+        keystrokeCount: 0,
+        timeMs: 0,
+        success: false,
+        finalText: startText,
+        steps: [],
+        diffFromBest: 0,
+        status: "error",
+      };
+      onCompleteRef.current?.(result);
+      return;
+    }
+
     abortControllerRef.current = new AbortController();
+    processingQueueRef.current = ""; // Reset buffer
 
     try {
       const response = await fetch("/api/stream", {
@@ -407,21 +475,10 @@ export function StreamingModelCard({
 
             // API returns {type: 'token', content: 'x'} format
             if (parsed.type === "token" && parsed.content) {
-              processTokens(parsed.content);
-              setDebugInfo(
-                (prev) =>
-                  `Last: ${JSON.stringify(parsed.content).slice(
-                    0,
-                    10
-                  )} | Raw[-30]: ${JSON.stringify(
-                    simulatorRef.current?.rawInput.slice(-30)
-                  )} | CL: ${simulatorRef.current?.vimState.commandLine}`
-              );
+              processingQueueRef.current += parsed.content;
             }
             if (parsed.timeMs !== undefined) {
-              setTimeMs(parsed.timeMs);
-              timeMsRef.current = parsed.timeMs; // Update ref immediately
-              emitProgress({ force: true });
+              timeMsRef.current = parsed.timeMs;
             }
             if (parsed.type === "debug") {
               // console.log("[Stream Debug]", parsed.message);
@@ -438,10 +495,10 @@ export function StreamingModelCard({
             try {
               const parsed = JSON.parse(data);
               if (parsed.type === "token" && parsed.content) {
-                processTokens(parsed.content);
+                // push to queue
+                processingQueueRef.current += parsed.content;
               }
               if (parsed.timeMs !== undefined) {
-                setTimeMs(parsed.timeMs);
                 timeMsRef.current = parsed.timeMs;
               }
             } catch (e) {
@@ -482,9 +539,10 @@ export function StreamingModelCard({
     startText,
     targetText,
     modelId,
+    modelName,
     challengeId,
     apiKey,
-    processTokens,
+    requiresApiKey,
     finishSimulation,
     stopTimer,
   ]);
@@ -570,40 +628,38 @@ export function StreamingModelCard({
     return () => clearInterval(displayInterval);
   }, [isRunning]);
 
-  // Auto-advance through steps during playback
+  // Auto-advance to latest step in live mode
+  // Separate effect to avoid currentStepIndex in deps causing infinite loops
   useEffect(() => {
-    if (playbackMode === "live") {
-      // In live mode, always jump to the latest step without re-triggering renders
-      const latestIndex = steps.length - 1;
-      if (currentStepIndex !== latestIndex) {
-        setCurrentStepIndex(latestIndex);
-      }
+    if (playbackMode !== "live") return;
+    const latestIndex = steps.length - 1;
+    setCurrentStepIndex((prev) => (latestIndex !== prev ? latestIndex : prev));
+  }, [playbackMode, steps.length]);
+
+  // Handle replay mode playback
+  useEffect(() => {
+    if (playbackMode !== "replay") return;
+    if (currentStepIndex >= steps.length - 1) {
+      setPlaybackMode("paused");
       return;
     }
 
-    if (playbackMode === "replay") {
-      if (currentStepIndex >= steps.length - 1) {
-        setPlaybackMode("paused");
-        return;
-      }
+    const timer = setTimeout(() => {
+      setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+    }, playSpeed);
 
-      const timer = setTimeout(() => {
-        setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
-      }, playSpeed);
-
-      return () => clearTimeout(timer);
-    }
+    return () => clearTimeout(timer);
   }, [playbackMode, steps.length, currentStepIndex, playSpeed]);
 
   // When a run finishes (or verifying), make sure the view snaps to the final step
+  // Note: We intentionally exclude currentStepIndex from deps so this only triggers
+  // on status change, not when user navigates manually via playback controls
   useEffect(() => {
     if ((status === "complete" || status === "verifying") && steps.length > 0) {
-      const finalIndex = steps.length - 1;
-      if (currentStepIndex !== finalIndex) {
-        setCurrentStepIndex(finalIndex);
-      }
+      setCurrentStepIndex(steps.length - 1);
     }
-  }, [status, steps.length, currentStepIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, steps.length]);
 
   // Auto-scroll keystroke history to current step
   useEffect(() => {
@@ -757,7 +813,10 @@ export function StreamingModelCard({
       </div>
 
       {/* Vim Display */}
-      <div className="flex-1 bg-gradient-to-b from-black/80 to-black/60 h-[400px] relative group">
+      <div
+        className="bg-gradient-to-b from-black/80 to-black/60 relative group"
+        style={{ height: `${editorHeight}px` }}
+      >
         <VimTextDisplay state={displayState} />
 
         {/* Overlay for waiting state */}

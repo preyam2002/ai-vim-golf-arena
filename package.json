@@ -9,6 +9,12 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.54",
+    "@ai-sdk/deepseek": "^1.0.31",
+    "@ai-sdk/google": "^2.0.45",
+    "@ai-sdk/mistral": "^2.0.25",
+    "@ai-sdk/openai": "^2.0.80",
+    "@ai-sdk/xai": "^2.0.39",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -39,6 +45,7 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@upstash/redis": "^1.35.7",
     "@vercel/analytics": "latest",
+    "ai": "^5.0.109",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
