@@ -21,6 +21,113 @@ function escapeRegex(pattern: string): string {
   return pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Read until an unescaped delimiter, preserving escapes for non-delimiter
+function readUntilDelimiter(
+  input: string,
+  delim: string
+): { part: string; remaining: string } {
+  let part = "";
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch === "\\") {
+      const next = input[i + 1];
+      if (next === delim) {
+        part += delim;
+        i += 2;
+        continue;
+      }
+      part += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === delim) {
+      return { part, remaining: input.slice(i + 1) };
+    }
+    part += ch;
+    i += 1;
+  }
+  return { part, remaining: "" };
+}
+
+// Read an expression until delimiter, respecting string literals
+function readExpressionUntilDelimiter(
+  input: string,
+  delim: string
+): { part: string; remaining: string } {
+  let part = "";
+  let i = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  while (i < input.length) {
+    const ch = input[i];
+
+    if (inSingleQuote) {
+      if (ch === "'") {
+        if (input[i + 1] === "'") {
+          part += "''";
+          i += 2;
+          continue;
+        }
+        inSingleQuote = false;
+      }
+      part += ch;
+      i += 1;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      if (ch === "\\") {
+        part += ch;
+        if (input[i + 1]) {
+          part += input[i + 1];
+          i += 2;
+        } else {
+          i += 1;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inDoubleQuote = false;
+      }
+      part += ch;
+      i += 1;
+      continue;
+    }
+
+    // Check for string start
+    if (ch === "'") {
+      inSingleQuote = true;
+      part += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inDoubleQuote = true;
+      part += ch;
+      i += 1;
+      continue;
+    }
+
+    // Check for delimiter
+    if (ch === delim) {
+      return { part, remaining: input.slice(i + 1) };
+    }
+    if (ch === "\\") {
+      if (input[i + 1] === delim) {
+        part += delim;
+        i += 2;
+        continue;
+      }
+    }
+
+    part += ch;
+    i += 1;
+  }
+  return { part, remaining: "" };
+}
+
 function buildSafeRegex(pattern: string, flags: string): RegExp | null {
   if (pattern.length > 10_000) {
     console.warn(
@@ -52,67 +159,15 @@ type CaseMode = "upper" | "lower" | null;
 function buildVimReplacementFn(template: string) {
   return (...args: any[]) => {
     // args: match, p1, p2, ... pN, offset, string
-    // The capture groups are from index 1 to args.length - 3 (match, offset, string excluded)
-    // But `args` length varies.
-    // Safe lookup:
     const match = args[0];
     const offset = args[args.length - 2];
     const string = args[args.length - 1];
-    // Groups are args[1...length-3] if Named groups are absent.
-    // If named groups, last arg is object.
-    // Standard JS regex without named groups:
-    // args[1] is group 1.
 
-    let result = "";
-    for (let i = 0; i < template.length; i++) {
-      const char = template[i];
-      if (char === "&") {
-        result += match;
-      } else if (char === "\\") {
-        i++;
-        const next = template[i];
-        if (!next) {
-          result += "\\"; // Trailing backslash
-          break;
-        }
-        if (/[0-9]/.test(next)) {
-          const groupIdx = parseInt(next, 10);
-          if (groupIdx === 0) {
-            result += match;
-          } else {
-            // Look up group content.
-            // Group 1 is at args[1].
-            // Note: if groupIdx > capturedGroups, JS returns undefined probably or empty string.
-            // We return empty string for strict parity if missing.
-            // We need to know where groups stop.
-            // Can we check args boundary?
-            // Since we don't know N, assume args[groupIdx] is group if valid index.
-            const val = args[groupIdx];
-            result += typeof val === "string" ? val : "";
-          }
-        } else if (next === "r") {
-          result += "\n";
-        } else if (next === "n") {
-          // Vim \n in replacement is <Nul> (binary 0).
-          // Some agents might expect newline.
-          // Parity test 9v00680e used \n token in keystrokes, not replacement string?
-          // If we see \n in string, we output \x00.
-          result += "\x00";
-        } else if (next === "t") {
-          result += "\t";
-        } else if (next === "&") {
-          result += "&"; // Literal &
-        } else if (next === "\\") {
-          result += "\\";
-        } else {
-          // Unknown escape -> literal
-          result += next;
-        }
-      } else {
-        result += char;
-      }
-    }
-    return result;
+    // Groups are args[1...length-3]
+    // If there are no groups, length is 3 (match, offset, string). args.slice(1, 0) -> []
+    const groups = args.slice(1, -2);
+
+    return renderVimReplacement(template, match, groups);
   };
 }
 
@@ -1269,98 +1324,114 @@ export function executeExCommand(
     return state;
   }
 
-  // Global/Inverse global command :[range]g[!]/pat/d or :[range]v[!]/pat/d
+  // Generic global command: :g/pat/cmd
+  // Regex: range, g/v, bang, delimiter
   const globalMatch = cmd.match(
-    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?([gv])(!)?\/(.+?)\/d$/
+    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?([gv])(!)?(.)/
   );
+
   if (globalMatch) {
-    saveUndo(state);
-    const rangeStr = globalMatch[1];
-    const cmdType = globalMatch[2]; // g or v
-    const hasBang = globalMatch[3] === "!";
-    // v is inverse by default; g! is inverse; v! behaves like g
-    const negate = cmdType === "v" ? !hasBang : hasBang;
-    let pattern = globalMatch[4];
+    const [, rangeStr, cmdType, bang, delim] = globalMatch;
+    // We need to parse pattern and then command
+    // The cmd string contains the full command. We need to skip the prefix we matched.
+    // But match returns the prefix match? No, it matches the start.
+    // We need the index of where the pattern starts.
+    // The match[0] is the prefix.
+    const prefixLength = globalMatch[0].length;
+    const remainder = cmd.slice(prefixLength);
 
-    // Simplified regex handling
-    pattern = vimToJsRegex(pattern);
+    const { part: patternRaw, remaining: cmdRaw } = readUntilDelimiter(
+      remainder,
+      delim
+    );
 
-    try {
-      const caseInsensitive =
-        state.options.ignorecase &&
-        (!state.options.smartcase || pattern.toLowerCase() === pattern);
-      const regexFlags = caseInsensitive ? "i" : "";
-      let { start: startLine, end: endLine } = rangeStr
-        ? parseCommandRange(rangeStr, state)
-        : { start: 0, end: Math.max(0, state.lines.length - 1) };
+    const negate = cmdType === "v" ? !bang : !!bang; // :v is negate, :g! is negate.
+    const pattern = patternRaw;
+    const commandToRun = cmdRaw || "p"; // Default to print if empty
 
-      // Check if pattern contains newline for multiline matching
-      if (pattern.includes("\\n") || pattern.includes("\n")) {
-        const fullText = state.lines.join("\n");
-        // Manual line-by-line matching to support Overlapping/Contiguous matches logic of Vim :g
-        const matchedLines = new Set<number>();
+    let { start: startLine, end: endLine } = parseCommandRange(rangeStr, state);
+    // Scan lines and mark
+    const matchedLineIndices: number[] = [];
+    const regexFlags =
+      state.options.ignorecase &&
+      (!state.options.smartcase || pattern.toLowerCase() === pattern)
+        ? "i"
+        : "";
+    const regex = new RegExp(pattern, regexFlags);
 
-        const joinedRegex = new RegExp(pattern, regexFlags + "m"); // No 'g', we use manual loop
-
-        let currentIdx = 0;
-        for (let i = 0; i < state.lines.length; i++) {
-          // Set regex to start looking from this line's start index in fullText
-          joinedRegex.lastIndex = currentIdx;
-
-          // We need 'y' (sticky) behavior? No, we want to match AT this line start.
-          // But 'm' flag ^ matches line start.
-          // If we use exec(), it finds the first match after lastIndex.
-          // We must check if that match starts EXACTLY at currentIdx?
-          // Vim :g matches if the line matches.
-          // So the match must overlap the line?
-          // Actually, simplest is: valid match starting at or before line end?
-          // Better: Use ^ anchor. with 'm' flag, ^ matches at currentIdx (if previous char was \n).
-          // But lastIndex doesn't affect ^ matching unless 'y'?
-          // Actually, if we use a regex with ^, and we search on a substring?
-          // Performance-wise, substring is fine.
-
-          const textFromLine = fullText.slice(currentIdx);
-          const match = joinedRegex.exec(textFromLine);
-
-          // If match found, and it starts at 0 (meaning it matches THIS line), mark it.
-          if (match && match.index === 0) {
-            matchedLines.add(i);
-          }
-
-          currentIdx += state.lines[i].length + 1;
-        }
-
-        // Invert if needed
-        const linesToDelete: number[] = [];
-        for (let i = startLine; i <= endLine; i++) {
-          const hasMatch = matchedLines.has(i);
-          const shouldAct = negate ? !hasMatch : hasMatch;
-          // Global command defaults to delete? No, :g/pat/cmd.
-          // My implementation assumes /d at the end: const globalMatch = ... /d$
-          // So we are deleting.
-          if (shouldAct) {
-            linesToDelete.push(i);
-          }
-        }
-
-        // Delete in reverse order
-        linesToDelete.reverse().forEach((idx) => {
-          state.lines.splice(idx, 1);
-        });
-      } else {
-        state.lines = state.lines.filter((line: string, index: number) => {
-          if (index < startLine || index > endLine) return true;
-          const regex = new RegExp(pattern, regexFlags);
-          const match = regex.test(line);
-          const shouldDelete = negate ? !match : match;
-          return !shouldDelete;
-        });
+    for (let i = startLine; i <= endLine; i++) {
+      const line = state.lines[i];
+      const match = regex.test(line);
+      const shouldAct = negate ? !match : match;
+      if (shouldAct) {
+        matchedLineIndices.push(i);
       }
+    }
 
-      if (state.lines.length === 0) state.lines.push("");
+    // If command is specifically 'd', use the bulk delete optimization (reverse order)
+    // to avoid index shifting issues and for parity with previous implementation
+    if (commandToRun.trim() === "d") {
+      matchedLineIndices.reverse().forEach((idx) => {
+        state.lines.splice(idx, 1);
+      });
       clampCursor(state);
-    } catch (e) {
-      console.error("Global command failed", e);
+    } else {
+      // Generic execution
+      // Iterate match indices.
+      // Note: If command modifies lines (insert/delete), indices shift!
+      // Vim spec: "The global commands work by first scanning... and marking... Then the [cmd] is executed for each marked line."
+      // If a line is deleted, we shouldn't execute on it (but it was marked).
+      // If we shift, subsequent marks shift.
+      // Implementing full mark tracking is complex.
+      // For parity with common usage (:g/.../s/...), we can process in reverse order?
+      // If we process reverse, line deletion won't affect lower indices.
+      // If we process forward, we must account for offset.
+      // Let's rely on the fact that most :g/pat/cmd don't delete unless cmd is d.
+      // But wait, gemini used :g/.../d which is caught above.
+      // gemini used :g/!ENV/s/... which is substitution.
+      // Substitution is usually in-place unless it adds newlines.
+      // If it adds newlines, indices shift down.
+      // If we process reverse, we are safe from downward shifts?
+      // If I insert at line 10, line 9 is unaffected.
+      // So REVERSE execution is safer for :g?
+      // Vim executes forward. ":g/^/m0" reverses file.
+      // If I execute reverse, ":g/^/m0" would do nothing (move bottom to top, then above-bottom to top...).
+      // Wait, bottom to top: last line move to 0. Second last move to 0. Result: inverted.
+      // If I execute forward: first line move to 0 (no op). Second line move to 0. Third move to 0.
+      // Result: inverted.
+      // So both reverse the file?
+
+      // Let's assume FORWARD execution for parity, but we need to handle shifts if the command is 'd' or 's' that changes line count.
+      // Since we handle 'd' separately, we only care about 's'.
+      // If 's' changes line count, subsequent indices shift.
+      // Let's track offset.
+      let offset = 0;
+      for (const originalIdx of matchedLineIndices) {
+        const currentIdx = originalIdx + offset;
+        // Check if line still exists
+        if (currentIdx >= state.lines.length) break;
+
+        // Set cursor
+        state.cursorLine = currentIdx;
+
+        const linesBefore = state.lines.length;
+        // Execute
+        // Remove leading colon if present in commandToRun?
+        // executeExCommand expects ":cmd".
+        const cmdString = commandToRun.startsWith(":")
+          ? commandToRun
+          : ":" + commandToRun;
+        // If cmdString doesn't have <CR>, append it? executeExCommand strips it.
+        // We should append <CR> just to be safe/consistent with expectation.
+        const finalCmd = cmdString.endsWith("<CR>")
+          ? cmdString
+          : cmdString + "<CR>";
+
+        state = executeExCommand(state, finalCmd, helpers);
+
+        const linesAfter = state.lines.length;
+        offset += linesAfter - linesBefore;
+      }
     }
     finishCommand(state);
     return state;
@@ -1403,119 +1474,42 @@ export function executeExCommand(
     const [, rangeStr, delimiter, remainder] = subPrefixMatch;
     const delim = delimiter;
 
-    // Read until an unescaped delimiter, preserving escapes for non-delimiter
-    const readUntilDelimiter = (
-      input: string
-    ): { part: string; remaining: string } => {
-      let part = "";
-      let i = 0;
-      while (i < input.length) {
-        const ch = input[i];
-        if (ch === "\\") {
-          const next = input[i + 1];
-          if (next === delim) {
-            part += delim;
-            i += 2;
-            continue;
-          }
-          part += ch;
-          i += 1;
-          continue;
-        }
-        if (ch === delim) {
-          return { part, remaining: input.slice(i + 1) };
-        }
-        part += ch;
-        i += 1;
-      }
-      return { part, remaining: "" };
-    };
-
-    // Read an expression until delimiter, respecting string literals
-    const readExpressionUntilDelimiter = (
-      input: string
-    ): { part: string; remaining: string } => {
-      let part = "";
-      let i = 0;
-      let inSingleQuote = false;
-      let inDoubleQuote = false;
-
-      while (i < input.length) {
-        const ch = input[i];
-
-        if (inSingleQuote) {
-          if (ch === "'") {
-            if (input[i + 1] === "'") {
-              part += "''";
-              i += 2;
-              continue;
-            }
-            inSingleQuote = false;
-          }
-          part += ch;
-          i += 1;
-          continue;
-        }
-
-        if (inDoubleQuote) {
-          if (ch === "\\") {
-            part += ch;
-            i += 1;
-            if (i < input.length) {
-              part += input[i];
-              i += 1;
-            }
-            continue;
-          }
-          if (ch === '"') {
-            inDoubleQuote = false;
-          }
-          part += ch;
-          i += 1;
-          continue;
-        }
-
-        // Not in quote
-        if (ch === "'") {
-          inSingleQuote = true;
-          part += ch;
-          i += 1;
-          continue;
-        }
-        if (ch === '"') {
-          inDoubleQuote = true;
-          part += ch;
-          i += 1;
-          continue;
-        }
-
-        if (ch === "\\" && input[i + 1] === delim) {
-          part += delim;
-          i += 2;
-          continue;
-        }
-
-        if (ch === delim) {
-          return { part, remaining: input.slice(i + 1) };
-        }
-
-        part += ch;
-        i += 1;
-      }
-      return { part, remaining: "" };
-    };
-
-    const { part: patternRaw, remaining: afterPattern } =
-      readUntilDelimiter(remainder);
+    const { part: patternRaw, remaining: afterPattern } = readUntilDelimiter(
+      remainder,
+      delim
+    );
 
     const looksLikeExpression = afterPattern.startsWith("\\=");
     const { part: replacementRaw, remaining: flagsRaw } = looksLikeExpression
-      ? readExpressionUntilDelimiter(afterPattern)
-      : readUntilDelimiter(afterPattern);
+      ? readExpressionUntilDelimiter(afterPattern, delim)
+      : readUntilDelimiter(afterPattern, delim);
 
     let pattern = patternRaw;
+    let nextCommand: string | null = null;
+    let flags = flagsRaw || "";
+
+    // Check for pipe separator in flags
+    const pipeIndex = flags.indexOf("|");
+    if (pipeIndex !== -1) {
+      nextCommand = flags.slice(pipeIndex + 1);
+      flags = flags.slice(0, pipeIndex);
+    }
+
+    // Helper to finish or recurse
+    const done = () => {
+      if (nextCommand) {
+        // Construct new command line
+        // If next command doesn't start with :, add it.
+        // Actually executeExCommand strips :, so we should provide it if we want to mimic full command.
+        // But executeExCommand logic: const cmd = command.slice(1, -4);
+        // So input must look like ":foo<CR>".
+        return executeExCommand(state, ":" + nextCommand + "<CR>", helpers);
+      }
+      finishCommand(state);
+      return state;
+    };
+
     const rawReplacement = replacementRaw || "";
-    const flags = flagsRaw || "";
     const global = flags.includes("g");
     const explicitIgnore = flags.includes("i");
     const explicitNoIgnore = flags.includes("I");
@@ -1540,8 +1534,7 @@ export function executeExCommand(
     }
 
     if (!pattern) {
-      finishCommand(state);
-      return state;
+      return done();
     }
 
     // Update last search pattern
@@ -1582,9 +1575,7 @@ export function executeExCommand(
           }
           state.lines = newLines.length > 0 ? newLines : [""];
           clampCursor(state);
-          finishCommand(state);
-          // If we solved it via join, return.
-          return state;
+          return done();
         }
       }
 
@@ -1601,8 +1592,7 @@ export function executeExCommand(
             200
           )}"${pattern.length > 200 ? "..." : ""})`
         );
-        finishCommand(state);
-        return state;
+        return done();
       }
 
       const iterativeMultiline =
@@ -1719,6 +1709,7 @@ export function executeExCommand(
     } catch (e) {
       console.error(`[VimEngine] Regex error:`, e);
     }
+    return done();
   }
 
   finishCommand(state);
