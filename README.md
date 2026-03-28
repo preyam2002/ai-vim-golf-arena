@@ -1,116 +1,96 @@
 # AI Vim Golf Arena
 
-Watch AI models compete to solve Vim Golf challenges with the fewest keystrokes.
+A competitive platform where AI models battle to solve [Vim Golf](https://vimgolf.com/) challenges using the fewest keystrokes possible. Features a custom-built Vim simulator, real-time streaming visualization, and support for 6 AI providers with 13+ models.
 
-**Live Demo**: [ai-vim-golf-arena.vercel.app](https://ai-vim-golf-arena.vercel.app)
-
-## What is AI Vim Golf Arena?
-
-This platform pits AI models against each other (and human benchmarks) in Vim Golf challenges - transforming text from a starting state to a target state using the fewest Vim keystrokes possible. It features a custom-built Vim simulator and supports multiple AI providers.
+**[Live Demo](https://ai-vim-golf-arena.vercel.app)**
 
 ## Features
 
-- Load challenges from VimGolf.com or use built-in static challenges
-- Select multiple AI models to compete simultaneously
-- Live keystroke replay with step-by-step visualization
-- Leaderboard ranking by keystrokes and time
-- Compare AI performance vs best human score
-
-## Vim Simulator Commands
-
-The custom Vim simulator supports:
-- **Navigation**: h, j, k, l, w, b, e, 0, $, G, gg
-- **Insert mode**: i, I, a, A, o, O
-- **Delete operations**: x, X, d, D
-- **Change operations**: c, C, s, S
-- **Replace mode**: r, R
-- **Yank and paste**: y, p, P
-- **Join lines**: J
-- **Substitute commands**: :%s/pattern/replacement/g
-- **Global commands**: g/pattern/d
-- **Line operations**: :d, :sort
+- **Multi-model competition** — pit OpenAI, Anthropic, Google, Mistral, xAI, and DeepSeek models against each other simultaneously
+- **Custom Vim simulator** — 30+ files implementing navigation, insert/visual/replace modes, macros, registers, marks, ex commands, text objects, undo/redo
+- **Real-time streaming** — watch AI solutions generate live via Server-Sent Events
+- **Step-by-step replay** — see each keystroke applied to the buffer with diff highlighting
+- **VimGolf.com integration** — fetch any challenge by ID, or use 10 built-in static challenges
+- **Daily challenges** — automated rotation with persistent scoring
+- **Offline caching** — pre-cached solutions for instant demos, with file-based or Redis persistence
+- **Leaderboard** — rank models by keystroke count and execution time against human benchmarks
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **Data Fetching**: SWR
-- **AI Providers**: OpenAI, Anthropic, Google, Mistral, xAI
-- **Custom**: Vim keystroke simulator
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript (strict) |
+| Styling | Tailwind CSS v4, Radix UI |
+| AI | Vercel AI SDK, 6 providers |
+| Data | SWR, file-based JSON / Upstash Redis |
+| Charts | Recharts |
+| Animation | Framer Motion |
+| Testing | Vitest (44+ test files) |
+| Deployment | Vercel |
 
-## Setup
-
-1. Install dependencies:
+## Quick Start
 
 ```bash
 npm install
+cp .env.example .env.local  # add your API keys
+npm run dev                  # http://localhost:7001
 ```
 
-2. Add environment variables:
+### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `AI_GATEWAY_URL` | AI Gateway endpoint URL |
-| `AI_GATEWAY_API_KEY` | API key for AI Gateway authorization |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AI_GATEWAY_URL` | Yes | Vercel AI Gateway endpoint |
+| `AI_GATEWAY_API_KEY` | Yes | Gateway API key |
+| `GOOGLE_API_KEY` | No | Direct Google AI access |
+| `USE_REDIS` | No | Enable Upstash Redis (`true`/`false`) |
+| `KV_REST_API_URL` | No | Upstash Redis URL |
+| `KV_REST_API_TOKEN` | No | Upstash Redis token |
 
-Example:
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/challenge?id=<id>` | Fetch a single challenge |
+| `GET` | `/api/challenge?list=true&page=1&limit=9` | List paginated challenges |
+| `POST` | `/api/run` | Run challenge with selected models (cached results) |
+| `POST` | `/api/stream` | SSE stream for real-time competition |
+| `GET` | `/api/kv-health` | Redis connection health check |
+
+## Architecture
+
 ```
-AI_GATEWAY_URL=https://gateway.ai.vercel.com/api/v1
-AI_GATEWAY_API_KEY=your_gateway_key
-```
-
-3. Run the development server:
-
-```bash
-npm run dev
-```
-
-## API Endpoints
-
-### GET /api/challenge
-
-Fetch a challenge by ID or list all available challenges.
-
-Query parameters:
-- `id` - Challenge ID (VimGolf ID or static challenge ID)
-- `list=true` - Return all static challenges
-
-### POST /api/run
-
-Execute a challenge with selected AI models.
-
-Request body:
-```json
-{
-  "challengeId": "string",
-  "startText": "string",
-  "targetText": "string",
-  "modelIds": ["string"],
-  "bestHumanScore": 10
-}
+src/
+├── app/                    # Next.js pages & API routes
+├── components/
+│   ├── arena/              # Competition UI (live arena, model cards, replay)
+│   ├── home/               # Landing page (challenge selector, hero)
+│   └── ui/                 # 60+ Radix UI component wrappers
+├── lib/
+│   ├── vim-*.ts            # Custom Vim simulator engine (30+ files)
+│   ├── ai-gateway.ts       # Multi-provider AI calling logic
+│   ├── challenge-source.ts # Challenge fetching & caching
+│   ├── store.ts            # File/Redis persistence layer
+│   └── streaming-vim-simulator.ts
+└── hooks/                  # React hooks
 ```
 
 ## How It Works
 
-1. **Challenge Selection**: Choose from VimGolf.com challenges or built-in static challenges
-2. **AI Competition**: Select multiple AI models to compete
-3. **Keystroke Generation**: Each AI generates a sequence of Vim commands
-4. **Simulation**: The custom Vim simulator executes the commands
-5. **Scoring**: Models are ranked by keystroke count (fewer is better)
-6. **Replay**: Watch the winning solution step-by-step
+1. **Select challenge** — pick from VimGolf.com or built-in challenges
+2. **Choose models** — select which AI models compete
+3. **AI generates keystrokes** — each model produces a Vim command sequence
+4. **Simulator executes** — custom engine applies keystrokes to the buffer
+5. **Score & rank** — models ranked by success, keystroke count, then speed
+6. **Replay** — step through the winning solution keystroke by keystroke
 
-## Roadmap
+## Testing
 
-- [ ] More AI model integrations
-- [ ] Human vs AI tournaments
-- [ ] Custom challenge creation
-- [ ] Leaderboard persistence
-- [ ] Replay sharing
-
-## Author
-
-**Preyam** - [GitHub](https://github.com/preyam2002)
+```bash
+npm run test        # Run all 44+ test files
+npm run lint        # ESLint
+```
 
 ## License
 
@@ -118,4 +98,4 @@ MIT
 
 ## Acknowledgments
 
-- Inspired by [VimGolf](https://vimgolf.com/)
+Built by [Preyam](https://github.com/preyam2002). Inspired by [VimGolf](https://vimgolf.com/).
