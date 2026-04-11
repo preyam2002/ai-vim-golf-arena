@@ -64,9 +64,9 @@ TARGET TEXT:
 ```'
 
 # Static challenge data: "id|title|start|target"
-declare -A CHALLENGE_START
-declare -A CHALLENGE_TARGET
-declare -A CHALLENGE_TITLE
+typeset -A CHALLENGE_START
+typeset -A CHALLENGE_TARGET
+typeset -A CHALLENGE_TITLE
 
 CHALLENGE_TITLE[static-1]="Simple Addition"
 CHALLENGE_START[static-1]="apple
@@ -135,14 +135,8 @@ let y = 2;
 let z = 3;"
 
 CHALLENGE_TITLE[static-9]="Trim Spaces"
-CHALLENGE_START[static-9]="alpha
-beta
-gamma
-delta"
-CHALLENGE_TARGET[static-9]="alpha
-beta
-gamma
-delta"
+CHALLENGE_START[static-9]=$'alpha  \nbeta   \ngamma    \ndelta'
+CHALLENGE_TARGET[static-9]=$'alpha\nbeta\ngamma\ndelta'
 
 CHALLENGE_TITLE[static-10]="Join Lines"
 CHALLENGE_START[static-10]="red
@@ -202,8 +196,40 @@ for MODEL_ID in "${MODELS[@]}"; do
     TARGET="${CHALLENGE_TARGET[$CHALLENGE_ID]}"
     TITLE="${CHALLENGE_TITLE[$CHALLENGE_ID]}"
 
-    PROMPT="${PROMPT_TEMPLATE//%START%/$START}"
-    PROMPT="${PROMPT//%TARGET%/$TARGET}"
+    PROMPT="You are an expert Vim golfer. Transform START into TARGET with the ABSOLUTE MINIMUM Vim keystrokes.
+
+## REASONING (Think Step-by-Step)
+1. Analyze: What changes are needed between START and TARGET?
+2. Options: List 2-3 approaches (substitution, macros, ranges, etc.)
+3. Count: Estimate keystrokes for each approach
+4. Choose: Pick the approach with FEWEST keystrokes
+5. Verify: Confirm your solution produces exact TARGET
+
+## OUTPUT RULES (Strict)
+- Output ONLY raw Vim keystrokes - NO markdown, NO explanation, NO code blocks
+- Use notation: <Esc>, <CR>, <BS> for special keys
+- Cursor starts at 0,0 in Normal mode
+- First character must be a valid Vim keystroke
+
+## EFFICIENCY PATTERNS
+- :%s/old/new/g<CR> beats repeated cwfoo<Esc>
+- :3,6d<CR> beats dddddd
+- . (dot repeat) for repetitive edits
+- Macros (q<reg>..q @<reg>) for complex repeats
+- :g/pattern/d<CR> for multi-line deletes
+
+Return ONLY the Vim keystrokes to transform START into TARGET.
+Do not include markdown, quotes, explanations, or extra lines.
+
+START TEXT:
+\`\`\`
+${START}
+\`\`\`
+
+TARGET TEXT:
+\`\`\`
+${TARGET}
+\`\`\`"
 
     echo -n "[$CHALLENGE_ID] $TITLE ... "
     START_TIME=$(($(date +%s%N)/1000000))

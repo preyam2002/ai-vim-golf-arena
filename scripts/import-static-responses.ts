@@ -105,6 +105,20 @@ function main() {
       keystrokeRaw = lines.slice(1).join("\n");
     }
 
+    // Handle cursor agent JSON output format (may have invalid JSON escapes)
+    const trimmed = keystrokeRaw.trim();
+    if (trimmed.startsWith("{") && trimmed.includes('"result"')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        keystrokeRaw = parsed.result || parsed.content || parsed.text || keystrokeRaw;
+      } catch {
+        // JSON.parse fails on invalid escape sequences (e.g. \( \w from vim regex)
+        // Extract result field with regex instead
+        const m = trimmed.match(/"result":"([\s\S]*?)","(?:stop_reason|session_id|is_error)/);
+        if (m) keystrokeRaw = m[1];
+      }
+    }
+
     const keystrokes = cleanKeystrokes(keystrokeRaw);
     if (!keystrokes) {
       console.error(`[empty] ${file} — no keystrokes`);
