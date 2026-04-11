@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { ArrowRight, Shuffle, Terminal, Trophy, Calendar } from "lucide-react";
+import { ArrowRight, Shuffle, Terminal, Trophy, Calendar, Github } from "lucide-react";
 import type { Challenge } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -211,6 +211,30 @@ export function ChallengeSelector() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="flex items-center justify-center gap-4 pt-4 border-t border-border">
+          <a
+            href="https://github.com/preyam2002/ai-vim-golf-arena"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Github className="h-4 w-4" />
+            Open Source
+          </a>
+          <span className="text-border">·</span>
+          <a
+            href="https://x.com/WispyWinter"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.261 5.632 5.903-5.632zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+            @WispyWinter
+          </a>
         </div>
       </div>
     </section>

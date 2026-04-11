@@ -625,13 +625,17 @@ export function StreamingModelCard({
     return () => clearInterval(displayInterval);
   }, [isRunning]);
 
-  // Auto-advance to latest step in live mode
-  // Separate effect to avoid currentStepIndex in deps causing infinite loops
+  // Auto-advance in live mode at playSpeed rate — makes speed control affect live streaming too
   useEffect(() => {
     if (playbackMode !== "live") return;
-    const latestIndex = steps.length - 1;
-    setCurrentStepIndex((prev) => (latestIndex !== prev ? latestIndex : prev));
-  }, [playbackMode, steps.length]);
+    if (currentStepIndex >= steps.length - 1) return;
+
+    const timer = setTimeout(() => {
+      setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+    }, playSpeed);
+
+    return () => clearTimeout(timer);
+  }, [playbackMode, steps.length, currentStepIndex, playSpeed]);
 
   // Handle replay mode playback
   useEffect(() => {
