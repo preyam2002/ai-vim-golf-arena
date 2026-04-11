@@ -209,15 +209,6 @@ export function LiveArena({
               Abort all
             </button>
           )}
-          {requiresApiKey && (
-            <div className="text-[11px] font-medium text-amber-200">
-              {apiKeyMissing
-                ? "Enter your API key to generate uncached runs."
-                : `Using your API key for ${
-                    missingModelNames.length || "any"
-                  } uncached model(s).`}
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">

@@ -23,11 +23,6 @@ export const availableModels: ModelConfig[] = [
     provider: "OpenAI",
   },
   {
-    id: "gpt-5-4-mini",
-    name: "GPT-5.4 Mini",
-    provider: "OpenAI",
-  },
-  {
     id: "codex-5-3",
     name: "Codex 5.3",
     provider: "OpenAI",
