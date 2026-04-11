@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { DiffViewer } from "@/components/arena/diff-viewer";
 import type { RunResult } from "@/lib/types";
@@ -321,7 +321,7 @@ export function Leaderboard({
                     <DiffBadge diff={result.diffFromBest} />
                   </td>
                   <td className="px-4 py-3 text-right text-muted-foreground">
-                    {result.timeMs}ms
+                    <LiveTime result={result} />
                   </td>
                   <td className="px-4 py-3 text-center">
                     {renderStatusBadge(result)}
@@ -398,4 +398,24 @@ function DiffBadge({ diff }: { diff: number }) {
     return <span className="font-mono text-sm text-sky-300">{diff}</span>;
   }
   return <span className="font-mono text-sm text-rose-300">+{diff}</span>;
+}
+
+function LiveTime({ result }: { result: RunResult }) {
+  const running = isInProgressStatus(result.status);
+  const startRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(result.timeMs);
+
+  useEffect(() => {
+    if (!running) {
+      setElapsed(result.timeMs);
+      return;
+    }
+    startRef.current = Date.now() - result.timeMs;
+    const id = setInterval(() => {
+      setElapsed(Date.now() - startRef.current);
+    }, 100);
+    return () => clearInterval(id);
+  }, [running, result.timeMs]);
+
+  return <>{elapsed}ms</>;
 }

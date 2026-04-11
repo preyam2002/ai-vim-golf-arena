@@ -103,7 +103,7 @@ export default function ChallengePage() {
   const [customChallenge, setCustomChallenge] = useState<Challenge | null>(
     null
   );
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey] = useState("");
   const lastResultsSignature = useRef<string>("");
 
   useEffect(() => {
@@ -136,12 +136,6 @@ export default function ChallengePage() {
     challenge?.id === "custom"
       ? availableModels.map((m) => m.id)
       : data?.cacheStatus?.missingModelIds ?? [];
-  const missingModelNames = missingModelIds.map(
-    (modelId) => MODEL_NAMES[modelId] || modelId
-  );
-  const shouldShowApiKeyInput =
-    (challenge?.id === "custom" ? true : missingModelIds.length > 0) &&
-    !!challenge;
 
   useEffect(() => {
     if (
@@ -271,17 +265,7 @@ export default function ChallengePage() {
         </div>
       </nav>
 
-      <ChallengeHeader
-        challenge={challenge}
-        ctaSlot={
-          <Link
-            href={playHref}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Play this challenge yourself
-          </Link>
-        }
-      />
+      <ChallengeHeader challenge={challenge} />
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         {error && (
@@ -295,12 +279,12 @@ export default function ChallengePage() {
           <EditorPane
             title="START"
             content={challenge.startText}
-            className="h-64"
+            className="h-96"
           />
           <EditorPane
             title="TARGET"
             content={challenge.targetText}
-            className="h-64"
+            className="h-96"
           />
         </div>
 
@@ -313,36 +297,6 @@ export default function ChallengePage() {
           />
         </div>
 
-        {shouldShowApiKeyInput && (
-          <div className="mt-3 rounded-lg border border-border bg-card p-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <label className="block text-sm font-medium text-foreground">
-                Enter your AI Gateway API key
-              </label>
-              <span className="text-xs text-muted-foreground">
-                Used only when cached runs are missing; never stored.
-              </span>
-            </div>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="vck_-..."
-              className="mt-2 w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-              {challenge?.id === "custom" ? (
-                <p>API key is required to run custom challenges.</p>
-              ) : missingModelNames.length > 0 ? (
-                <p>
-                  No cached runs exist yet for {missingModelNames.join(", ")}.
-                  Provide a key to generate them.
-                </p>
-              ) : null}
-              <p>Your key stays in this session only.</p>
-            </div>
-          </div>
-        )}
 
         <div className="mt-4">
           <h2 className="mb-4 text-lg font-semibold text-foreground">
@@ -354,7 +308,7 @@ export default function ChallengePage() {
             modelNames={MODEL_NAMES}
             onResultsComplete={handleResultsComplete}
             apiKey={apiKey}
-            requiresApiKey={shouldShowApiKeyInput}
+            requiresApiKey={missingModelIds.length > 0}
             missingModelIds={missingModelIds}
           />
         </div>
@@ -392,6 +346,15 @@ export default function ChallengePage() {
             <StatsPanel result={selectedResult} />
           </div>
         )}
+
+        <div className="mt-8 flex justify-center pb-8">
+          <Link
+            href={playHref}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Play this challenge yourself
+          </Link>
+        </div>
       </div>
     </div>
   );

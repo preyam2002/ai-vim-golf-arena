@@ -83,7 +83,7 @@ export function StatsPanel({ result }: StatsPanelProps) {
               {result.success ? "Matches Target" : "Does Not Match"}
             </span>
           </div>
-          <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 font-mono text-sm">{result.finalText}</pre>
+          <pre className="max-h-[32rem] overflow-auto rounded-md bg-muted p-3 font-mono text-sm">{result.finalText}</pre>
         </div>
       </div>
     </div>

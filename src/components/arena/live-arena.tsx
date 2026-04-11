@@ -249,11 +249,7 @@ export function LiveArena({
         className={`grid gap-2 ${
           selectedModels.length === 1
             ? "grid-cols-1"
-            : selectedModels.length === 2
-            ? "grid-cols-1 md:grid-cols-2"
-            : selectedModels.length <= 4
-            ? "grid-cols-1 md:grid-cols-2"
-            : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            : "grid-cols-1 md:grid-cols-2"
         }`}
       >
         {selectedModels

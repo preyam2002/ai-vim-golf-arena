@@ -277,7 +277,7 @@ function renderVimReplacement(
   return out;
 }
 
-function vimToJsRegex(pattern: string): string {
+export function vimToJsRegex(pattern: string): string {
   if (pattern.startsWith("\\v")) {
     pattern = pattern.slice(2);
   } else {
@@ -298,6 +298,17 @@ function vimToJsRegex(pattern: string): string {
     const PIPE = "__VIM_PIPE__";
     const LBRACE = "__VIM_LBRACE__";
     const RBRACE = "__VIM_RBRACE__";
+    const NONGREEDY = `*${QMARK}`;
+
+    // Handle non-greedy quantifiers BEFORE placeholder processing
+    // because \{ gets converted to a placeholder and \{-} would be lost.
+    // Use QMARK placeholder so the trailing ? isn't escaped as a literal.
+    pattern = pattern
+      .replace(/\\\{-\}/g, NONGREEDY)
+      .replace(/\\\{-1,\}/g, `+${QMARK}`)
+      .replace(/\\\{-(\d+),(\d+)\}/g, `{$1,$2}${QMARK}`)
+      .replace(/\\\{-(\d+),\}/g, `{$1,}${QMARK}`)
+      .replace(/\\\{-,(\d+)\}/g, `{0,$1}${QMARK}`);
 
     pattern = pattern
       // Step 1: Map Vim quantifiers/metachars (\+, \?, \|, \{, \}) to placeholders
@@ -316,10 +327,7 @@ function vimToJsRegex(pattern: string): string {
       .replace(new RegExp(QMARK, "g"), "?")
       .replace(new RegExp(PIPE, "g"), "|")
       .replace(new RegExp(LBRACE, "g"), "{")
-      .replace(new RegExp(RBRACE, "g"), "}")
-      // Support non-greedy quantifiers: \{-} -> *?, \{-1,} -> +?
-      .replace(/\\{-}/g, "*?")
-      .replace(/\\{-1,}/g, "+?");
+      .replace(new RegExp(RBRACE, "g"), "}");
 
     // Prefer earlier matches before capture groups to better mirror Vim's
     // backtracking behavior for patterns like ".*\\\([A-Z_]\\\+\\\).*".
@@ -330,6 +338,26 @@ function vimToJsRegex(pattern: string): string {
 
   // Normalize Vim's "[^]]" class (anything but ]) into a JS-safe escape
   pattern = pattern.replace(/\[\^\]\]/g, "[^\\]]");
+
+  // Word boundaries: \< (start of word) and \> (end of word) -> \b
+  pattern = pattern.replace(/\\</g, "\\b").replace(/\\>/g, "\\b");
+
+  // \zs / \ze: zero-width match start/end assertions
+  // \zs -> lookbehind: everything before \zs becomes a lookbehind
+  if (pattern.includes("\\zs")) {
+    const idx = pattern.indexOf("\\zs");
+    const before = pattern.slice(0, idx);
+    const after = pattern.slice(idx + 3);
+    pattern = before ? `(?<=${before})${after}` : after;
+  }
+  // \ze -> lookahead: everything after \ze becomes a lookahead
+  if (pattern.includes("\\ze")) {
+    const idx = pattern.indexOf("\\ze");
+    const before = pattern.slice(0, idx);
+    const after = pattern.slice(idx + 3);
+    pattern = after ? `${before}(?=${after})` : before;
+  }
+
   return pattern;
 }
 
@@ -1250,9 +1278,95 @@ export function executeExCommand(
           data = data.split("\n").reverse().join("\n");
           continue;
         }
+        if (part === "sort") {
+          data = data.split("\n").sort().join("\n");
+          continue;
+        }
+        if (part === "sort -r") {
+          data = data.split("\n").sort().reverse().join("\n");
+          continue;
+        }
+        if (part === "sort -n") {
+          data = data
+            .split("\n")
+            .sort((a, b) => parseFloat(a) - parseFloat(b))
+            .join("\n");
+          continue;
+        }
+        if (part === "uniq") {
+          data = data
+            .split("\n")
+            .filter((line, i, arr) => i === 0 || line !== arr[i - 1])
+            .join("\n");
+          continue;
+        }
+        if (part === "rev") {
+          data = data
+            .split("\n")
+            .map((line) => line.split("").reverse().join(""))
+            .join("\n");
+          continue;
+        }
+        if (part === "wc -l") {
+          data = String(data.split("\n").length);
+          continue;
+        }
+        if (part === "nl" || part === "cat -n") {
+          data = data
+            .split("\n")
+            .map((line, i) => `     ${i + 1}\t${line}`)
+            .join("\n");
+          continue;
+        }
         if (/^tr ['"]\\012['"] ,$/.test(part)) {
           data = data.replace(/\n/g, ",");
           if (data.endsWith(",")) data = data.slice(0, -1);
+          continue;
+        }
+        // Generic tr 'SET1' 'SET2' — character transliteration
+        const trMatch = part.match(
+          /^tr\s+['"](.+?)['"]\s+['"](.+?)['"]$/
+        );
+        if (trMatch) {
+          const [, from, to] = trMatch;
+          let result = "";
+          for (let i = 0; i < data.length; i++) {
+            const idx = from.indexOf(data[i]);
+            if (idx !== -1 && idx < to.length) {
+              result += to[idx];
+            } else {
+              result += data[i];
+            }
+          }
+          data = result;
+          continue;
+        }
+        // tr -d 'CHARS' — delete characters
+        const trDeleteMatch = part.match(
+          /^tr\s+-d\s+['"](.+?)['"]$/
+        );
+        if (trDeleteMatch) {
+          const chars = trDeleteMatch[1];
+          data = data
+            .split("")
+            .filter((ch) => !chars.includes(ch))
+            .join("");
+          continue;
+        }
+        // sed 's/pattern/replacement/flags' — basic sed substitution
+        const sedMatch = part.match(
+          /^sed\s+['"]s(.)(.+?)\1(.*?)\1([gi]*)['"]$/
+        );
+        if (sedMatch) {
+          const [, , sedPattern, sedRepl, sedFlags] = sedMatch;
+          const sedRegex = new RegExp(
+            sedPattern,
+            sedFlags.includes("g") ? "g" : ""
+          );
+          data = data
+            .split("\n")
+            .map((line) => line.replace(sedRegex, sedRepl))
+            .join("\n");
           continue;
         }
         return null;
@@ -1296,6 +1410,47 @@ export function executeExCommand(
     return state;
   }
 
+  // Join command :[range]j[oin][!]
+  const joinMatch = cmd.match(
+    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?j(?:oin)?(!)?\s*$/
+  );
+  if (joinMatch) {
+    saveUndo(state);
+    const rangeStr = joinMatch[1];
+    const bang = joinMatch[2] === "!";
+    const { start, end } = rangeStr
+      ? parseCommandRange(rangeStr, state)
+      : { start: state.cursorLine, end: state.cursorLine + 1 };
+
+    const clampedStart = Math.max(0, start);
+    const clampedEnd = Math.min(state.lines.length - 1, end);
+
+    if (clampedStart < clampedEnd) {
+      const joinCol = state.lines[clampedStart].length;
+      for (let i = clampedStart; i < clampedEnd; i++) {
+        const current = state.lines[clampedStart];
+        const next = state.lines[clampedStart + 1];
+        if (bang) {
+          state.lines[clampedStart] = current + next;
+        } else {
+          const trimmed = next.replace(/^\s+/, "");
+          state.lines[clampedStart] =
+            current + (current.length > 0 && trimmed.length > 0 ? " " : "") + trimmed;
+        }
+        state.lines.splice(clampedStart + 1, 1);
+      }
+      state.cursorLine = clampedStart;
+      state.cursorCol = Math.min(
+        joinCol,
+        state.lines[clampedStart].length - 1
+      );
+    }
+
+    clampCursor(state);
+    finishCommand(state);
+    return state;
+  }
+
   // Delete command :[range]d
   const deleteMatch = cmd.match(/^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?d$/);
   if (deleteMatch) {
@@ -1320,6 +1475,36 @@ export function executeExCommand(
     );
 
     clampCursor(state);
+    finishCommand(state);
+    return state;
+  }
+
+  // Global move to top (used for reversing via :g/^/m0)
+  // Must be BEFORE generic :g handler to take priority
+  const globalMoveTop = cmd.match(
+    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?g\/(.+?)\/m0$/
+  );
+  if (globalMoveTop) {
+    saveUndo(state);
+    let pattern = globalMoveTop[2];
+    pattern = pattern.replace(/\\\|/g, "|");
+    pattern = pattern.replace(/\\([^+?()|])/g, "$1");
+    try {
+      const caseInsensitive =
+        state.options.ignorecase &&
+        (!state.options.smartcase || pattern.toLowerCase() === pattern);
+      const regex = new RegExp(pattern, caseInsensitive ? "i" : "");
+      const matched: string[] = [];
+      const others: string[] = [];
+      for (const line of state.lines) {
+        if (regex.test(line)) matched.push(line);
+        else others.push(line);
+      }
+      state.lines = matched.reverse().concat(others);
+      clampCursor(state);
+    } catch (e) {
+      console.error("Global move command failed", e);
+    }
     finishCommand(state);
     return state;
   }
@@ -1349,7 +1534,10 @@ export function executeExCommand(
     const pattern = patternRaw;
     const commandToRun = cmdRaw || "p"; // Default to print if empty
 
-    let { start: startLine, end: endLine } = parseCommandRange(rangeStr, state);
+    // :g defaults to entire buffer (%) when no range given, unlike most ex commands
+    let { start: startLine, end: endLine } = rangeStr
+      ? parseCommandRange(rangeStr, state)
+      : { start: 0, end: state.lines.length - 1 };
     // Scan lines and mark
     const matchedLineIndices: number[] = [];
     const regexFlags =
@@ -1357,7 +1545,7 @@ export function executeExCommand(
       (!state.options.smartcase || pattern.toLowerCase() === pattern)
         ? "i"
         : "";
-    const regex = new RegExp(pattern, regexFlags);
+    const regex = new RegExp(vimToJsRegex(pattern), regexFlags);
 
     for (let i = startLine; i <= endLine; i++) {
       const line = state.lines[i];
@@ -1432,35 +1620,6 @@ export function executeExCommand(
         const linesAfter = state.lines.length;
         offset += linesAfter - linesBefore;
       }
-    }
-    finishCommand(state);
-    return state;
-  }
-
-  // Global move to top (used for reversing via :g/^/m0)
-  const globalMoveTop = cmd.match(
-    /^((?:'|<|>|%|\.|\$|\d|[+-]|,)+)?g\/(.+?)\/m0$/
-  );
-  if (globalMoveTop) {
-    saveUndo(state);
-    let pattern = globalMoveTop[2];
-    pattern = pattern.replace(/\\\|/g, "|");
-    pattern = pattern.replace(/\\([^+?()|])/g, "$1");
-    try {
-      const caseInsensitive =
-        state.options.ignorecase &&
-        (!state.options.smartcase || pattern.toLowerCase() === pattern);
-      const regex = new RegExp(pattern, caseInsensitive ? "i" : "");
-      const matched: string[] = [];
-      const others: string[] = [];
-      for (const line of state.lines) {
-        if (regex.test(line)) matched.push(line);
-        else others.push(line);
-      }
-      state.lines = matched.reverse().concat(others);
-      clampCursor(state);
-    } catch (e) {
-      console.error("Global move command failed", e);
     }
     finishCommand(state);
     return state;

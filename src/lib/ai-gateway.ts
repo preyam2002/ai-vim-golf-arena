@@ -4,79 +4,66 @@ import { generateText, gateway, createGateway } from "ai";
 // Models available for Vim Golf challenges - all through Vercel AI Gateway
 // Model IDs are WITHOUT provider prefix per Vercel AI Gateway convention
 export const availableModels: ModelConfig[] = [
-  // OpenAI
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "OpenAI",
-  },
-  {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    provider: "OpenAI",
-  },
-  {
-    id: "o1",
-    name: "o1 (Reasoning)",
-    provider: "OpenAI",
-    isThinking: true,
-  },
-  {
-    id: "o3-mini",
-    name: "o3 Mini (Reasoning)",
-    provider: "OpenAI",
-    isThinking: true,
-  },
-
   // Anthropic
   {
-    id: "claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
+    id: "claude-opus-4-6",
+    name: "Claude Opus 4.6",
     provider: "Anthropic",
   },
   {
-    id: "claude-3-opus",
-    name: "Claude 3 Opus",
+    id: "claude-sonnet-4-6",
+    name: "Claude Sonnet 4.6",
     provider: "Anthropic",
+  },
+
+  // OpenAI
+  {
+    id: "gpt-5-4",
+    name: "GPT-5.4",
+    provider: "OpenAI",
+  },
+  {
+    id: "gpt-5-4-mini",
+    name: "GPT-5.4 Mini",
+    provider: "OpenAI",
+  },
+  {
+    id: "codex-5-3",
+    name: "Codex 5.3",
+    provider: "OpenAI",
+  },
+  {
+    id: "codex-5-2",
+    name: "Codex 5.2",
+    provider: "OpenAI",
   },
 
   // Google
   {
-    id: "gemini-2.0-flash",
-    name: "Gemini 2.0 Flash",
-    provider: "Google",
-  },
-  {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
+    id: "gemini-3-1-pro",
+    name: "Gemini 3.1 Pro",
     provider: "Google",
   },
 
   // xAI
   {
-    id: "grok-2",
-    name: "Grok 2",
+    id: "grok-4",
+    name: "Grok 4",
     provider: "xAI",
   },
 
-  // DeepSeek
+  // Moonshot
   {
-    id: "deepseek-v3",
-    name: "DeepSeek V3",
-    provider: "DeepSeek",
-  },
-  {
-    id: "deepseek-r1",
-    name: "DeepSeek R1 (Reasoning)",
-    provider: "DeepSeek",
-    isThinking: true,
+    id: "kimi-k2-5",
+    name: "Kimi K2.5",
+    provider: "Moonshot",
   },
 
-  // Mistral
+  // Cursor
   {
-    id: "mistral-large",
-    name: "Mistral Large",
-    provider: "Mistral",
+    id: "composer-2",
+    name: "Composer 2",
+    provider: "Cursor",
   },
 ];
 

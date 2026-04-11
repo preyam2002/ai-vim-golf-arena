@@ -1,0 +1,36 @@
+\documentclass{minimal}
+
+\begin{document}
+
+\begin{enumerate}
+
+\item Item 1
+\begin{enumerate}
+	\item a
+	\item b
+	\item c
+\end{enumerate}
+\item Item 2
+\begin{enumerate}
+	\item a
+	\item b
+\end{enumerate}
+\item Item 3
+\begin{enumerate}
+	\item b
+	\item c
+\end{enumerate}
+\item Item 4
+\begin{enumerate}
+	\item b
+	\item c
+\end{enumerate}
+\item Item 5
+\begin{enumerate}
+	\item b
+	\item c
+\end{enumerate}
+
+\end{enumerate}
+
+\end{document}

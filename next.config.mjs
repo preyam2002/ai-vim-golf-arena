@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  turbopack: {
+    root: "/Users/preyam/repo/ai-vim-golf-arena",
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

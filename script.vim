@@ -1,0 +1,1 @@
+:%s/\W\+/\r/gddggjI jI qqqqqjk0y^j0Pkk0y^jj0P@qq@qZZ

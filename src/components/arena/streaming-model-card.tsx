@@ -56,15 +56,12 @@ export function StreamingModelCard({
   totalModels = 1,
   requiresApiKey = false,
 }: StreamingModelCardProps) {
-  // Calculate editor height based on number of models
-  const editorHeight =
-    totalModels === 1
-      ? 300
-      : totalModels === 2
-      ? 250
-      : totalModels <= 4
-      ? 180
-      : 150;
+  // Calculate editor height based on content so text fits without scrolling
+  const contentLineCount = Math.max(
+    startText.split("\n").length,
+    targetText.split("\n").length
+  );
+  const editorHeight = Math.max(280, Math.min(600, contentLineCount * 22 + 40));
   const [status, setStatus] = useState<
     "idle" | "streaming" | "verifying" | "complete"
   >("idle");

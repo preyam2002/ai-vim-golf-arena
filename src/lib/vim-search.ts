@@ -1,4 +1,5 @@
 import { SearchMatch, VimOptions } from "./vim-types";
+import { vimToJsRegex } from "./vim-ex-commands";
 
 export function performSearch(
   lines: string[],
@@ -27,7 +28,8 @@ export function performSearch(
       !!options?.ignorecase &&
       (!options?.smartcase || pattern.toLowerCase() === pattern);
     const flags = `g${shouldIgnoreCase ? "i" : ""}`;
-    const regex = buildRegex(pattern, flags);
+    const jsPattern = vimToJsRegex(pattern);
+    const regex = buildRegex(jsPattern, flags);
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];

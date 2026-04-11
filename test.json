@@ -1,0 +1,67 @@
+{
+  "company": {
+    "details": {
+      "name": "TechCorp",
+      "founded": 1995,
+      "isPublic": true
+    },
+    "locations": {
+      "headquarters": {
+        "address": {
+          "street": "123 Innovation Way",
+          "unit": "4B",
+          "city": "San Francisco",
+          "state": "CA",
+          "zip": "94105"
+        },
+        "coordinates": {
+          "lat": 37.7749,
+          "lng": -122.4194
+        }
+      },
+      "branches": {
+        "europe": {
+          "primary": {
+            "city": "London",
+            "employees": 250,
+            "opened": "2020-01-15"
+          },
+          "secondary": {
+            "city": "Berlin",
+            "employees": 120,
+            "opened": "2021-03-01"
+          }
+        },
+        "asia": {
+          "primary": {
+            "city": "Tokyo",
+            "employees": 180,
+            "opened": "2019-11-30"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "financial": {
+        "revenue": {
+          "2021": 1500000,
+          "2022": 2200000,
+          "2023": 3100000
+        },
+        "expenses": {
+          "2021": 1200000,
+          "2022": 1800000,
+          "2023": 2500000
+        }
+      },
+      "performance": {
+        "goals": {
+          "q1": 85,
+          "q2": 90,
+          "q3": 88,
+          "q4": 92
+        }
+      }
+    }
+  }
+}

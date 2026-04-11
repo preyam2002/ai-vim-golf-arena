@@ -1908,16 +1908,32 @@ export function handleNormalModeKeystroke(
       }
       case ".":
         if (state.lastChange) {
-          state.commandBuffer = []; // Clear buffer before replay
-          state.countBuffer = ""; // Do not treat the new count as a prefix on the repeated keys
-          const keys = state.lastChange.keys;
-          let tempState = state;
-          for (let n = 0; n < count; n++) {
-            for (const key of keys) {
+          const hasExplicitCount = state.countBuffer.length > 0;
+          state.commandBuffer = [];
+          state.countBuffer = "";
+          let replayKeys = [...state.lastChange.keys];
+          if (hasExplicitCount) {
+            // Strip leading digits from stored keys (the original count)
+            while (replayKeys.length > 0 && /^[0-9]$/.test(replayKeys[0])) {
+              replayKeys.shift();
+            }
+            // Prepend the new count and replay once
+            const countDigits = count.toString().split("");
+            replayKeys = [...countDigits, ...replayKeys];
+            let tempState = state;
+            for (const key of replayKeys) {
               tempState = executeKeystroke(tempState, key);
             }
+            return tempState;
+          } else {
+            // No explicit count: replay stored keys (with original count) count times
+            // (count defaults to 1 when no prefix given)
+            let tempState = state;
+            for (const key of replayKeys) {
+              tempState = executeKeystroke(tempState, key);
+            }
+            return tempState;
           }
-          return tempState;
         }
         break;
       case "p":

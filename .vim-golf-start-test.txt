@@ -1,0 +1,26 @@
+\documentclass{minimal}
+
+\begin{document}
+
+\begin{itemize}
+
+\item[1.] Item 1
+\subitem a
+\subitem b
+\subitem c
+\item[2.] Item 2
+\subitem a
+\subitem b
+\item[3.] Item 3
+\subitem b
+\subitem c
+\item[4.] Item 4
+\subitem b
+\subitem c
+\item[5.] Item 5
+\subitem b
+\subitem c
+
+\end{itemize}
+
+\end{document}
