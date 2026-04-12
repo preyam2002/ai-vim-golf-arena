@@ -37,16 +37,9 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     return await handleStreamPost(request);
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Stream API] Fatal top-level error:", error);
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : typeof error === "object"
-        ? JSON.stringify(error)
-        : String(error);
-
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: withCors({ "Content-Type": "application/json" }),
     });
@@ -132,14 +125,13 @@ async function handleStreamPost(request: NextRequest) {
 
   // AI Gateway uses a single API key for all providers
   if (!process.env.AI_GATEWAY_API_KEY) {
+    console.error(
+      `[Stream API] Missing AI_GATEWAY_API_KEY (challengeId=${challengeId} dailyId=${dailyId} isDaily=${isDaily} isDefault=${isDefault})`
+    );
     return new Response(
-      JSON.stringify({
-        error:
-          "Missing API key: AI_GATEWAY_API_KEY environment variable is not set",
-        debug: { challengeId, dailyId, isDaily, isDefault },
-      }),
+      JSON.stringify({ error: "Service not configured" }),
       {
-        status: 401,
+        status: 503,
         headers: withCors({ "Content-Type": "application/json" }),
       }
     );
@@ -156,14 +148,14 @@ async function handleStreamPost(request: NextRequest) {
     const keystrokes = await callAIGateway(modelId, startText, targetText);
     const cleanedKeystrokes = cleanKeystrokes(keystrokes);
     if (!cleanedKeystrokes.trim()) {
+      console.warn(
+        `[Stream API] Empty keystrokes for modelId=${modelId} challengeId=${challengeId} isDaily=${isDaily}`
+      );
       return new Response(
-        JSON.stringify({
-          error: "Model returned empty keystrokes",
-          debug: { modelId, challengeId, isDaily },
-        }),
+        JSON.stringify({ error: "Model returned empty response" }),
         {
           status: 502,
-          headers: { "Content-Type": "application/json" },
+          headers: withCors({ "Content-Type": "application/json" }),
         }
       );
     }
@@ -181,21 +173,28 @@ async function handleStreamPost(request: NextRequest) {
         const persistResult = async (timeMs: number) => {
           if (persisted || !challengeId) return;
           persisted = true;
-          const { store } = await import("@/lib/store");
-          const existing = await store.getResult(challengeId, modelId);
-          if (existing) return;
-          await store.saveResult(challengeId, {
-            modelId,
-            modelName: model.name ?? modelId,
-            keystrokes: cleanedKeystrokes,
-            keystrokeCount: cleanedKeystrokes.length,
-            timeMs,
-            success: true,
-            finalText: "",
-            steps: [],
-            diffFromBest: 0,
-            tokenTimeline: tokenTimeline.slice(),
-          });
+          try {
+            const { store } = await import("@/lib/store");
+            const existing = await store.getResult(challengeId, modelId);
+            if (existing) return;
+            await store.saveResult(challengeId, {
+              modelId,
+              modelName: model.name ?? modelId,
+              keystrokes: cleanedKeystrokes,
+              keystrokeCount: cleanedKeystrokes.length,
+              timeMs,
+              success: true,
+              finalText: "",
+              steps: [],
+              diffFromBest: 0,
+              tokenTimeline: tokenTimeline.slice(),
+            });
+          } catch (err) {
+            console.error(
+              `[Stream API] persistResult failed (challengeId=${challengeId} modelId=${modelId}):`,
+              err
+            );
+          }
         };
 
         for (const token of tokens) {
@@ -232,20 +231,13 @@ async function handleStreamPost(request: NextRequest) {
         Connection: "keep-alive",
       }),
     });
-  } catch (error: any) {
-    console.error("[Stream API] Fatal error:", error);
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : typeof error === "object"
-        ? JSON.stringify(error)
-        : String(error);
-
+  } catch (error) {
+    console.error(
+      `[Stream API] Fatal error (challengeId=${challengeId} dailyId=${dailyId} isDaily=${isDaily} modelId=${modelId}):`,
+      error
+    );
     return new Response(
-      JSON.stringify({
-        error: errorMessage,
-        debug: { challengeId, dailyId, isDaily, modelId },
-      }),
+      JSON.stringify({ error: "Upstream model request failed" }),
       {
         status: 502,
         headers: withCors({ "Content-Type": "application/json" }),

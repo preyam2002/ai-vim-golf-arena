@@ -65,7 +65,12 @@ export class StreamingVimSimulator {
         this.steps.push(step);
         newSteps.push(step);
       } catch (e) {
-        // Skip invalid keystrokes
+        console.warn(
+          `[StreamingVimSimulator] Failed to execute keystroke ${JSON.stringify(
+            keystroke
+          )}:`,
+          e
+        );
       }
 
       this.processedIndex += keystroke.length;

@@ -49,12 +49,13 @@ export async function GET(request: NextRequest) {
     const pageFromQuery = pageParam ? Number.parseInt(pageParam, 10) : 1;
     const requestedPage =
       Number.isFinite(pageFromQuery) && pageFromQuery > 0 ? pageFromQuery : 1;
+    const MAX_PAGE_SIZE = 100;
     const pageSizeFromQuery = pageSizeParam
       ? Number.parseInt(pageSizeParam, 10)
       : 9;
     const pageSize =
       Number.isFinite(pageSizeFromQuery) && pageSizeFromQuery > 0
-        ? pageSizeFromQuery
+        ? Math.min(pageSizeFromQuery, MAX_PAGE_SIZE)
         : 20;
 
     const total = challenges.length;
