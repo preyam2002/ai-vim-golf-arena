@@ -46,6 +46,8 @@ export interface ReplayStep {
   cursorCol: number;
   mode: VimMode;
   commandLine: string | null;
+  /** Original recorded timestampMs for this step's last token (used for 1x replay). */
+  timestampMs?: number;
 }
 
 export type VimMode =

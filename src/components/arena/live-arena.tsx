@@ -27,7 +27,7 @@ export function LiveArena({
 }: LiveArenaProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [runKey, setRunKey] = useState(0); // Used to reset/restart all cards
-  const [playSpeed, setPlaySpeed] = useState(100);
+  const [playSpeed, setPlaySpeed] = useState(1);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [latestResults, setLatestResults] = useState<Map<string, RunResult>>(
     new Map()
@@ -220,10 +220,12 @@ export function LiveArena({
               onChange={(e) => setPlaySpeed(Number(e.target.value))}
               className="rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-sm text-foreground outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/30"
             >
-              <option value={200}>0.5x</option>
-              <option value={100}>1x</option>
-              <option value={50}>2x</option>
-              <option value={20}>5x</option>
+              <option value={0.5}>0.5x</option>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
+              <option value={5}>5x</option>
+              <option value={10}>10x</option>
+              <option value={25}>25x</option>
             </select>
           </div>
           {isRunning && (

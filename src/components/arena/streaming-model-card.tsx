@@ -104,7 +104,9 @@ export function StreamingModelCard({
   const stepsRef = useRef(steps);
   const hasStartedRunRef = useRef(false);
   const runStartedAtRef = useRef<number | null | undefined>(runStartedAt);
-  const [, setDisplayTick] = useState(0);
+  const playSpeedRef = useRef(playSpeed);
+  const playbackModeRef = useRef(playbackMode);
+  const currentStepIndexRef = useRef(currentStepIndex);
 
   useEffect(() => {
     runStartedAtRef.current = runStartedAt;
@@ -202,6 +204,18 @@ export function StreamingModelCard({
     runStartedAtRef.current = runStartedAt;
   }, [runStartedAt]);
 
+  useEffect(() => {
+    playSpeedRef.current = playSpeed;
+  }, [playSpeed]);
+
+  useEffect(() => {
+    playbackModeRef.current = playbackMode;
+  }, [playbackMode]);
+
+  useEffect(() => {
+    currentStepIndexRef.current = currentStepIndex;
+  }, [currentStepIndex]);
+
   const emitProgress = useCallback(
     (opts?: { force?: boolean }) => {
       if (!onProgressRef.current || !simulatorRef.current) return;
@@ -271,25 +285,29 @@ export function StreamingModelCard({
       if (!keystroke) break;
 
       sim.vimState = executeKeystroke(sim.vimState, keystroke);
-      const step: ReplayStep = {
+      newSteps.push({
         keystroke,
         text: sim.vimState.lines.join("\n"),
         cursorLine: sim.vimState.cursorLine,
         cursorCol: sim.vimState.cursorCol,
         mode: sim.vimState.mode,
         commandLine: sim.vimState.commandLine,
-      };
-      newSteps.push(step);
+        timestampMs: timeMsRef.current,
+      });
       sim.processedIndex += keystroke.length;
     }
 
     if (newSteps.length > 0) {
-      setSteps((prev) => {
-        const next = [...prev, ...newSteps];
-        stepsRef.current = next; // Sync Ref immediately for finishSimulation
-        return next;
-      });
-      // Only emit "in-progress" if we aren't finished yet
+      const nextSteps = [...stepsRef.current, ...newSteps];
+      stepsRef.current = nextSteps;
+      setSteps(nextSteps);
+      // During live playback, follow the server's pacing: advance to the
+      // latest step as it arrives. The server sleeps between tokens, so
+      // this naturally takes the model's generation time at 1x.
+      if (playbackModeRef.current === "live") {
+        currentStepIndexRef.current = nextSteps.length - 1;
+        setCurrentStepIndex(nextSteps.length - 1);
+      }
       if (!isFinishedRef.current) {
         emitProgress();
       }
@@ -354,6 +372,9 @@ export function StreamingModelCard({
       JSON.stringify(cleanedInput)
     );
     const keystrokeCount = countKeystrokes(cleanedInput);
+    // Prefer the model's recorded time (from server `done` event) over wall
+    // clock so the displayed duration reflects actual generation time, not
+    // playback wall clock (which varies with playSpeed).
     const finalElapsed =
       startTimeRef.current !== null
         ? Math.max(
@@ -426,6 +447,7 @@ export function StreamingModelCard({
           targetText,
           challengeId,
           apiKey,
+          playSpeed: playSpeedRef.current,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -475,8 +497,12 @@ export function StreamingModelCard({
             if (parsed.type === "token" && parsed.content) {
               processingQueueRef.current += parsed.content;
             }
-            if (parsed.timeMs !== undefined) {
+            if (
+              typeof parsed.timeMs === "number" &&
+              parsed.timeMs > timeMsRef.current
+            ) {
               timeMsRef.current = parsed.timeMs;
+              setTimeMs(parsed.timeMs);
             }
             if (parsed.type === "debug") {
               // console.log("[Stream Debug]", parsed.message);
@@ -493,11 +519,13 @@ export function StreamingModelCard({
             try {
               const parsed = JSON.parse(data);
               if (parsed.type === "token" && parsed.content) {
-                // push to queue
                 processingQueueRef.current += parsed.content;
               }
-              if (parsed.timeMs !== undefined) {
-                timeMsRef.current = parsed.timeMs;
+              if (typeof parsed.timeMs === "number") {
+                timeMsRef.current = Math.max(
+                  timeMsRef.current,
+                  parsed.timeMs
+                );
               }
             } catch (e) {
               console.error("Failed to parse trailing SSE data:", e);
@@ -617,29 +645,43 @@ export function StreamingModelCard({
     stopTimer,
   ]);
 
-  // Heartbeat to keep display time updating even if the stream is silent
+  // Replay playback: when the user hits Play on a completed run, pace through
+  // the already-recorded steps at playSpeed. Live mode doesn't use this — the
+  // server paces token delivery and processBufferedTokens advances the display.
   useEffect(() => {
-    if (!isRunning) return;
-    const displayInterval = window.setInterval(() => {
-      setDisplayTick(Date.now());
-    }, 120);
-    return () => clearInterval(displayInterval);
-  }, [isRunning]);
+    if (playbackMode !== "replay") return;
+    if (stepsRef.current.length <= 1) return;
 
-  // Auto-advance in live mode at playSpeed rate — uses a persistent interval so
-  // newly-streamed steps don't reset the timer (previous setTimeout approach
-  // never fired when token rate outpaced playSpeed).
-  useEffect(() => {
-    if (playbackMode !== "live") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
 
-    const interval = setInterval(() => {
-      setCurrentStepIndex((prev) => {
-        const maxIdx = stepsRef.current.length - 1;
-        return prev < maxIdx ? prev + 1 : prev;
-      });
-    }, playSpeed);
+    const advance = () => {
+      if (cancelled) return;
+      const idx = currentStepIndexRef.current;
+      const maxIdx = stepsRef.current.length - 1;
+      if (idx >= maxIdx) {
+        setPlaybackMode("paused");
+        return;
+      }
+      const s = stepsRef.current;
+      const from = s[idx]?.timestampMs ?? 0;
+      const to = s[idx + 1]?.timestampMs ?? from;
+      const raw = Math.max(0, to - from);
+      const speed = Math.max(0.01, playSpeed);
+      const delay = Math.max(0, raw / speed);
+      timer = setTimeout(() => {
+        const next = idx + 1;
+        currentStepIndexRef.current = next;
+        setCurrentStepIndex(next);
+        advance();
+      }, delay);
+    };
 
-    return () => clearInterval(interval);
+    advance();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [playbackMode, playSpeed]);
 
   // Once live playback has caught up to the final step AND the stream is done,
@@ -650,24 +692,6 @@ export function StreamingModelCard({
     if (currentStepIndex < steps.length - 1) return;
     setPlaybackMode("paused");
   }, [playbackMode, status, currentStepIndex, steps.length]);
-
-  // Handle replay mode playback — same persistent-interval pattern.
-  useEffect(() => {
-    if (playbackMode !== "replay") return;
-
-    const interval = setInterval(() => {
-      setCurrentStepIndex((prev) => {
-        const maxIdx = stepsRef.current.length - 1;
-        if (prev >= maxIdx) {
-          setPlaybackMode("paused");
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, playSpeed);
-
-    return () => clearInterval(interval);
-  }, [playbackMode, playSpeed]);
 
   // When a run finishes (or verifying), snap the view to the final step ONLY
   // if the user isn't actively watching a live/replay playback — otherwise the
@@ -784,15 +808,9 @@ export function StreamingModelCard({
     return <div className="h-5 w-5 rounded-full border-2 border-zinc-700" />;
   };
 
-  const isLiveTiming = status === "streaming" || status === "verifying";
-  const displayTimeMs = (() => {
-    if (!isLiveTiming) return timeMs;
-    const now = Date.now();
-    const baseline =
-      runStartedAtRef.current ?? runStartedAt ?? startTimeRef.current;
-    if (baseline == null) return timeMs;
-    return Math.max(timeMs, Math.round(now - baseline));
-  })();
+  // `timeMs` grows as tokens arrive (parsed.timeMs) AND via wall-clock tick,
+  // so it tracks the model's generation clock rather than playback wall clock.
+  const displayTimeMs = timeMs;
 
   return (
     <div

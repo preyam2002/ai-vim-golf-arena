@@ -19,6 +19,14 @@
 tmp/
 output*.txt
 test_output*.txt
+
+# scratch / vim session leftovers
+.tmp-*
+.vim-golf-*
+.vimscriptlog
+*.swp
+*.swo
+texput.log
 # keep small JSONs, ignore bulk data
 data/*
 !data/popular-challenges.json

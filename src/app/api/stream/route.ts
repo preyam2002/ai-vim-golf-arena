@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
 
 async function handleStreamPost(request: NextRequest) {
   const body = await request.json();
-  const { startText, targetText, modelId, challengeId } = body;
+  const { startText, targetText, modelId, challengeId, playSpeed } = body;
+  const speed =
+    typeof playSpeed === "number" && playSpeed > 0 ? playSpeed : 1;
   // AI SDK uses provider-specific env vars (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
   // No unified API key needed anymore
 
@@ -72,7 +74,7 @@ async function handleStreamPost(request: NextRequest) {
     console.log(
       `[stream] offline cache hit challenge=${challengeId} model=${modelId}`
     );
-    return streamFromCachedSolution(cachedSolution);
+    return streamFromCachedSolution(cachedSolution, speed);
   }
 
   const isDefault = challengeId ? isDefaultChallengeId(challengeId) : false;
@@ -86,7 +88,7 @@ async function handleStreamPost(request: NextRequest) {
       console.log(
         `[stream] default db cache hit challenge=${challengeId} model=${modelId}`
       );
-      return streamFromCachedSolution(stored);
+      return streamFromCachedSolution(stored, speed);
     }
     console.warn(
       `[stream] default cache miss challenge=${challengeId} model=${modelId} (will generate with apiKey)`
@@ -116,7 +118,7 @@ async function handleStreamPost(request: NextRequest) {
       console.log(
         `[stream] daily cache hit challenge=${challengeId} model=${modelId}`
       );
-      return streamFromCachedSolution(cachedResult);
+      return streamFromCachedSolution(cachedResult, speed);
     }
     console.warn(
       `[stream] daily cache miss challenge=${challengeId} model=${modelId} (will generate with apiKey)`
@@ -247,48 +249,45 @@ async function handleStreamPost(request: NextRequest) {
 }
 
 function buildTokenTimeline(result: RunResult) {
+  // Preserve each token's ORIGINAL timestamp (that's what 1x replay uses).
+  // Server-side delivery speed is handled separately in streamFromCachedSolution.
   if (result.tokenTimeline?.length) {
-    return result.tokenTimeline.map((entry) => ({
-      token: entry.token,
-      timestampMs: Math.max(0, Math.round(entry.timestampMs)),
+    return result.tokenTimeline.map((e) => ({
+      token: e.token,
+      timestampMs: Math.max(0, Math.round(e.timestampMs)),
     }));
   }
 
-  const keystrokes = cleanKeystrokes(result.keystrokes);
-  const chars = keystrokes.split("");
-
+  const chars = cleanKeystrokes(result.keystrokes).split("");
   if (chars.length === 0) return [];
 
-  const step =
-    result.timeMs && result.timeMs > 0
-      ? Math.max(10, Math.round(result.timeMs / Math.max(chars.length, 1)))
-      : 15; // enforce a perceptible cadence for derived timelines
-
-  let current = 0;
-  return chars.map((token, index) => {
-    if (index > 0) {
-      current += step;
-    }
-    return { token, timestampMs: current };
-  });
+  // Derive even spacing across the recorded total duration.
+  const total = result.timeMs && result.timeMs > 0 ? result.timeMs : chars.length * 80;
+  const step = total / Math.max(chars.length, 1);
+  return chars.map((token, index) => ({
+    token,
+    timestampMs: Math.round(index * step),
+  }));
 }
 
-function streamFromCachedSolution(result: RunResult) {
+function streamFromCachedSolution(result: RunResult, speed: number = 1) {
   const encoder = new TextEncoder();
   const timeline = buildTokenTimeline(result);
   const totalTime =
     result.timeMs && result.timeMs > 0
       ? result.timeMs
       : timeline.at(-1)?.timestampMs ?? 0;
+  const safeSpeed = speed > 0 ? speed : 1;
 
   const stream = new ReadableStream({
     async start(controller) {
+      // Pace tokens at the model's original cadence, scaled by playback speed.
+      // 1x → real generation time; 5x → 5× faster; etc.
       let lastTs = 0;
       for (const event of timeline) {
-        const delay = Math.max(10, event.timestampMs - lastTs); // ensure visible token pacing from cache
-        if (delay > 0) {
-          await sleep(delay);
-        }
+        const delta = Math.max(0, event.timestampMs - lastTs);
+        const scaled = delta / safeSpeed;
+        if (scaled > 0) await sleep(scaled);
         lastTs = event.timestampMs;
         controller.enqueue(
           encoder.encode(
