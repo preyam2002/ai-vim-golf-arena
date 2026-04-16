@@ -345,7 +345,8 @@ export function StreamingModelCard({
 
     setSuccess(isSuccess);
     setStatus("complete");
-    setPlaybackMode("paused");
+    // Do NOT flip to "paused" here — let the live interval keep ticking through
+    // any remaining steps at playSpeed. It naturally stops advancing at maxIdx.
 
     const cleanedInput = cleanKeystrokes(currentRawInput);
     console.log(
@@ -625,39 +626,57 @@ export function StreamingModelCard({
     return () => clearInterval(displayInterval);
   }, [isRunning]);
 
-  // Auto-advance in live mode at playSpeed rate — makes speed control affect live streaming too
+  // Auto-advance in live mode at playSpeed rate — uses a persistent interval so
+  // newly-streamed steps don't reset the timer (previous setTimeout approach
+  // never fired when token rate outpaced playSpeed).
   useEffect(() => {
     if (playbackMode !== "live") return;
-    if (currentStepIndex >= steps.length - 1) return;
 
-    const timer = setTimeout(() => {
-      setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+    const interval = setInterval(() => {
+      setCurrentStepIndex((prev) => {
+        const maxIdx = stepsRef.current.length - 1;
+        return prev < maxIdx ? prev + 1 : prev;
+      });
     }, playSpeed);
 
-    return () => clearTimeout(timer);
-  }, [playbackMode, steps.length, currentStepIndex, playSpeed]);
+    return () => clearInterval(interval);
+  }, [playbackMode, playSpeed]);
 
-  // Handle replay mode playback
+  // Once live playback has caught up to the final step AND the stream is done,
+  // transition to paused so the play button can trigger a fresh replay.
+  useEffect(() => {
+    if (playbackMode !== "live") return;
+    if (status !== "complete" && status !== "verifying") return;
+    if (currentStepIndex < steps.length - 1) return;
+    setPlaybackMode("paused");
+  }, [playbackMode, status, currentStepIndex, steps.length]);
+
+  // Handle replay mode playback — same persistent-interval pattern.
   useEffect(() => {
     if (playbackMode !== "replay") return;
-    if (currentStepIndex >= steps.length - 1) {
-      setPlaybackMode("paused");
-      return;
-    }
 
-    const timer = setTimeout(() => {
-      setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+    const interval = setInterval(() => {
+      setCurrentStepIndex((prev) => {
+        const maxIdx = stepsRef.current.length - 1;
+        if (prev >= maxIdx) {
+          setPlaybackMode("paused");
+          return prev;
+        }
+        return prev + 1;
+      });
     }, playSpeed);
 
-    return () => clearTimeout(timer);
-  }, [playbackMode, steps.length, currentStepIndex, playSpeed]);
+    return () => clearInterval(interval);
+  }, [playbackMode, playSpeed]);
 
-  // When a run finishes (or verifying), make sure the view snaps to the final step
-  // Note: We intentionally exclude currentStepIndex from deps so this only triggers
-  // on status change, not when user navigates manually via playback controls
+  // When a run finishes (or verifying), snap the view to the final step ONLY
+  // if the user isn't actively watching a live/replay playback — otherwise the
+  // snap overrides playSpeed-driven advancement and users never see the pacing.
   useEffect(() => {
     if ((status === "complete" || status === "verifying") && steps.length > 0) {
-      setCurrentStepIndex(steps.length - 1);
+      if (playbackMode !== "live" && playbackMode !== "replay") {
+        setCurrentStepIndex(steps.length - 1);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, steps.length]);

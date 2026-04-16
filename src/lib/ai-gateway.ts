@@ -6,6 +6,11 @@ import { generateText, gateway, createGateway } from "ai";
 export const availableModels: ModelConfig[] = [
   // Anthropic
   {
+    id: "claude-opus-4-7",
+    name: "Claude Opus 4.7",
+    provider: "Anthropic",
+  },
+  {
     id: "claude-opus-4-6",
     name: "Claude Opus 4.6",
     provider: "Anthropic",
