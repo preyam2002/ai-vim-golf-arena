@@ -1,8 +1,0 @@
-print("OPQOPQOPQOPQOPQOPQOPQOPQOPQOPQOPQOPQ0PQOPQOPQOPQ")
-print("123123123123123123l23123123123123123123123123123")
-print("hijkhijkhijkhijkhijkhijkhijkhijkhijkhijkhijkһijk")
-print("klmnkImnklmnklmnklmnklmnklmnklmnklmnklmnklmnklmn")
-print("2342342342342342342342Ʒ4234234234234234234234234")
-print("ijkijkijkijkijkijkijkijkijkijkijkijkijκijkijkijk")
-
-# vim:ft=python
